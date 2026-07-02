@@ -28,36 +28,43 @@ public class AddCommand : Command<AddCommand.Settings>
         var scope = settings.ResolveScope(session.Paths);
         var providers = settings.ResolveProviders(session.Paths);
 
-        List<Asset> assets;
         var explicitIds = settings.Targets.Where(t => !AssetKinds.TryParse(t, out _) && t != "all").ToList();
+        var filterGiven = settings.Targets.Length > 0 || settings.Groups.Length > 0;
 
-        if (settings.Targets.Length == 0 && settings.Groups.Length == 0)
+        if (!filterGiven && settings.Yes)
         {
-            // Nothing specified: interactive checklist, or a clear error when not a TTY.
-            var installable = CommandHelpers.EnforceStatus(
-                CommandHelpers.SelectAssets(loaded.Catalog, [], [], providers), []);
-            if (!Output.CanPrompt)
-            {
-                throw new AgentPackException(
-                    "No assets specified and no interactive terminal to pick from.",
-                    "Pass asset ids ('agentpack add grill-me'), a kind ('agentpack add skills'), or --group <name>.");
-            }
+            throw new AgentPackException(
+                "Refusing to install the entire catalog with --yes.",
+                "Say what to install: ids, a kind ('agentpack add skills --yes'), or --group <name>.");
+        }
 
-            assets = Prompts.SelectAssets(installable, "Select assets to install", preselectAll: false).ToList();
+        if (!filterGiven && !Output.CanPrompt)
+        {
+            throw new AgentPackException(
+                "No assets specified and no interactive terminal to pick from.",
+                "Pass asset ids ('agentpack add grill-me'), a kind ('agentpack add skills'), or --group <name>.");
+        }
+
+        var assets = CommandHelpers.EnforceStatus(
+            CommandHelpers.SelectAssets(loaded.Catalog, settings.Targets, settings.Groups, providers),
+            explicitIds);
+        if (assets.Count == 0)
+        {
+            throw new AgentPackException("No matching assets found.", "Run 'agentpack list' to see the catalog.");
+        }
+
+        // Named ids install directly. A kind or group (or nothing) opens the checklist,
+        // filtered to that selection, so 'agentpack add skills --claude' lets you pick.
+        if (Apply && explicitIds.Count == 0 && assets.Count > 1 && Output.CanPrompt && !settings.Yes)
+        {
+            var title = settings.Targets.Length > 0 || settings.Groups.Length > 0
+                ? "Select assets to install (filtered)"
+                : "Select assets to install";
+            assets = Prompts.SelectAssets(assets, title, preselectAll: false).ToList();
             if (assets.Count == 0)
             {
                 Output.Info("Nothing selected.");
                 return 0;
-            }
-        }
-        else
-        {
-            assets = CommandHelpers.EnforceStatus(
-                CommandHelpers.SelectAssets(loaded.Catalog, settings.Targets, settings.Groups, providers),
-                explicitIds);
-            if (assets.Count == 0)
-            {
-                throw new AgentPackException("No matching assets found.", "Run 'agentpack list' to see the catalog.");
             }
         }
 

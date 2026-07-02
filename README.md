@@ -37,11 +37,18 @@ Everything works on all four providers unless the product itself has no such con
 
 "—" = the product has no such feature; agentpack says so explicitly instead of writing files nothing reads. Every path is verified against official docs and pinned by tests: [provider-mapping.md](docs/provider-mapping.md).
 
-## Install
+## Setup (once)
 
 ```bash
-dotnet tool install -g AgentPack --add-source <your-org-feed>
+# 1. Install the CLI — --add-source is your company's NuGet feed (where the tool package lives)
+dotnet tool install -g AgentPack --add-source https://nuget.your-org.com/v3/index.json
+
+# 2. Connect your company's asset catalog — a git repo with the approved skills/hooks/mcp
+agentpack source add org https://github.com/your-org/ai-catalog.git
+agentpack source sync
 ```
+
+Two different "sources", two different things: the **NuGet feed** delivers the `agentpack` tool itself; the **catalog source** is the git repo the tool installs assets from. Working inside the catalog repo itself? Skip step 2 — it's picked up automatically.
 
 Works on Windows (PowerShell), macOS, and Linux.
 
@@ -56,10 +63,15 @@ agentpack profile apply backend      # everything your team standardized on
 ### I want to browse and pick
 
 ```bash
-agentpack add                        # interactive checklist
-agentpack add grill-me secret-scan   # or by name
-agentpack add --group security       # or by group
+agentpack add                        # checklist of everything
+agentpack add skills                 # checklist of skills only
+agentpack add skills --claude        # ...installing just for Claude Code
+agentpack add grill-me secret-scan   # skip the checklist: install by name
+agentpack add --group security       # checklist of one group
+agentpack list                       # just look, install nothing
 ```
+
+Naming ids installs directly; a kind or group opens the checklist filtered to it.
 
 ### I want to stay up to date
 

@@ -117,6 +117,32 @@ public class CliEndToEndTests
     }
 
     [Fact]
+    public void AddEverythingWithYesIsRefused()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "demo-skill");
+
+        var result = RunCli(temp, "add", "--claude", "--project", "--yes");
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("entire catalog", result.Output + result.Error);
+    }
+
+    [Fact]
+    public void AddByKindInstallsAllOfKindWhenNonInteractive()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "skill-one");
+        WriteSkill(temp, "skill-two");
+
+        var result = RunCli(temp, "add", "skills", "--claude", "--project", "--yes");
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "skill-one", "SKILL.md")));
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "skill-two", "SKILL.md")));
+    }
+
+    [Fact]
     public void CatalogLockThenValidatePasses()
     {
         using var temp = new TempDir();

@@ -260,9 +260,9 @@ public static class HookMerger
         HookTrigger.Stop => "agentStop",
         HookTrigger.SessionStart => "sessionStart",
         HookTrigger.UserPromptSubmit => "userPromptSubmitted",
+        HookTrigger.Notification => "notification",
         var trigger => throw new AgentPackException(
-            $"Copilot hooks do not support the {EnumParsers.CamelCase(trigger.ToString())} trigger.",
-            "Supported for Copilot: preToolUse, postToolUse, stop, sessionStart, userPromptSubmit.")
+            $"Copilot hooks do not support the {EnumParsers.CamelCase(trigger.ToString())} trigger.")
     };
 
     private static HookTrigger Trigger(Asset asset) => asset.Hook?.Trigger ?? HookTrigger.PreToolUse;

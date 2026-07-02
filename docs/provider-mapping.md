@@ -61,14 +61,30 @@ Catalog triggers are normalized (`preToolUse`, `postToolUse`, `stop`, `sessionSt
 | stop | `Stop` | `Stop` | `agentStop` | `stop` |
 | sessionStart | `SessionStart` | `SessionStart` | `sessionStart` | `sessionStart` |
 | userPromptSubmit | `UserPromptSubmit` | `UserPromptSubmit` | `userPromptSubmitted` | `beforeSubmitPrompt` |
-| notification | `Notification` | — (error with hint) | — (error with hint) | — (error with hint) |
+| notification | `Notification` | — (error with hint) | `notification` | — (error with hint) |
+
+After installing a **Copilot repo-level hook**, the CLI reminds you to commit `.github/hooks/` — Copilot CLI picks the file up immediately, but the Copilot cloud coding agent reads hooks only from the default branch.
+
+## MCP environment variables — per-target syntax
+
+Secrets never enter the catalog: MCP env vars are declared **by name** in the manifest and rendered in whatever reference syntax the target actually expands (verified per product):
+
+| Target | File | Env reference |
+|---|---|---|
+| Claude Code | `.mcp.json` / `~/.claude.json` | `"TOKEN": "${TOKEN}"` |
+| VS Code Copilot (project) | `.vscode/mcp.json` | `"TOKEN": "${env:TOKEN}"` |
+| Copilot CLI (user) | `~/.copilot/mcp-config.json` | no expansion syntax documented — the `env` object is omitted (stdio servers inherit your shell env) and `tools: ["*"]` is written explicitly |
+| Cursor | `.cursor/mcp.json` | `"TOKEN": "${env:TOKEN}"` |
+| Codex | `.codex/config.toml` | `env_vars = ["TOKEN"]` (forwarded from the shell); HTTP headers via `env_http_headers = { Header = "TOKEN" }` |
+
+Note: Copilot CLI reads MCP servers only from its user-level config; the project-scope Copilot MCP install targets VS Code Copilot (`.vscode/mcp.json`), which the Copilot coding agent also understands.
 
 ## Merge safety guarantees
 
 - Merges never remove or rewrite entries the user already has; an existing server/hook with **different** content is a conflict error (exit code 3), never a silent overwrite.
 - Identical re-installs are no-ops (idempotent).
 - Any file agentpack modifies is backed up first (`.agentpack/backups/<timestamp>/`).
-- Secrets never enter the catalog: MCP env vars are declared **by name** and rendered as `${VAR}` placeholders; values in `env:` maps are rejected.
+- Values in `env:` maps are rejected at validation — env vars are names, never secrets.
 
 ## Keeping this table honest
 

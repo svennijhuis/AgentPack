@@ -18,7 +18,7 @@ public static class McpMerger
 
     public static string Apply(Asset asset, string? sourcePath, InstallTarget target, string targetPath, InstallScope scope, Action<string> backupIfExists)
     {
-        var servers = BuildServers(asset, sourcePath);
+        var servers = BuildServers(asset, sourcePath, target.Provider, scope);
         if (target.Provider == ProviderName.Codex)
         {
             MergeCodexToml(targetPath, servers, backupIfExists);
@@ -34,7 +34,7 @@ public static class McpMerger
     /// <summary>The exact fragment that will be merged — used for previews before applying.</summary>
     public static string Preview(Asset asset, string? sourcePath, InstallTarget target, InstallScope scope)
     {
-        var servers = BuildServers(asset, sourcePath);
+        var servers = BuildServers(asset, sourcePath, target.Provider, scope);
         if (target.Provider == ProviderName.Codex)
         {
             var builder = new StringBuilder();
@@ -52,11 +52,11 @@ public static class McpMerger
     public static string RootKey(ProviderName provider, InstallScope scope) =>
         provider == ProviderName.Copilot && scope == InstallScope.Project ? "servers" : "mcpServers";
 
-    public static JsonObject BuildServers(Asset asset, string? sourcePath)
+    public static JsonObject BuildServers(Asset asset, string? sourcePath, ProviderName provider, InstallScope scope)
     {
         if (asset.Mcp is not null)
         {
-            return new JsonObject { [asset.Mcp.Server] = BuildTypedServer(asset.Mcp) };
+            return new JsonObject { [asset.Mcp.Server] = BuildTypedServer(asset.Mcp, provider, scope) };
         }
 
         var rawPath = FindMcpJson(sourcePath);
@@ -76,10 +76,26 @@ public static class McpMerger
         }
 
         var serverName = StringValue(root, "server") ?? StringValue(root, "name") ?? asset.Id;
-        return new JsonObject { [serverName] = BuildRawServer(root, asset.Id) };
+        return new JsonObject { [serverName] = BuildRawServer(root, asset.Id, provider, scope) };
     }
 
-    private static JsonObject BuildTypedServer(McpServer mcp)
+    /// <summary>
+    /// How each target references environment variables — verified per product:
+    /// Claude Code expands ${VAR}; VS Code and Cursor expand ${env:VAR};
+    /// Copilot CLI documents no expansion (stdio servers inherit the shell env, so the
+    /// env object is omitted); Codex converts to env_vars/env_http_headers in TOML.
+    /// </summary>
+    private static string EnvPlaceholder(ProviderName provider, InstallScope scope, string envVar) => provider switch
+    {
+        ProviderName.Cursor => "${env:" + envVar + "}",
+        ProviderName.Copilot when scope == InstallScope.Project => "${env:" + envVar + "}",
+        _ => "${" + envVar + "}"
+    };
+
+    private static bool OmitEnvObject(ProviderName provider, InstallScope scope) =>
+        provider == ProviderName.Copilot && scope == InstallScope.User;
+
+    private static JsonObject BuildTypedServer(McpServer mcp, ProviderName provider, InstallScope scope)
     {
         var server = new JsonObject { ["type"] = TransportName(mcp.Transport) };
         if (mcp.Transport == McpTransport.Stdio)
@@ -87,7 +103,10 @@ public static class McpMerger
             server["command"] = mcp.Command ?? "";
             server["args"] = ToJsonArray(mcp.Args);
             if (mcp.Cwd is not null) server["cwd"] = mcp.Cwd;
-            server["env"] = EnvObject(mcp.EnvVars);
+            if (!OmitEnvObject(provider, scope))
+            {
+                server["env"] = EnvObject(mcp.EnvVars, provider, scope);
+            }
         }
         else
         {
@@ -97,7 +116,7 @@ public static class McpMerger
                 var headers = new JsonObject();
                 foreach (var (header, envVar) in mcp.HeaderEnvVars.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
                 {
-                    headers[header] = "${" + envVar + "}";
+                    headers[header] = EnvPlaceholder(provider, scope, envVar);
                 }
 
                 server["headers"] = headers;
@@ -105,11 +124,20 @@ public static class McpMerger
         }
 
         var tools = mcp.Tools.Where(x => !string.IsNullOrWhiteSpace(x) && x != "*").ToList();
-        if (tools.Count > 0) server["tools"] = ToJsonArray(tools);
+        if (tools.Count > 0)
+        {
+            server["tools"] = ToJsonArray(tools);
+        }
+        else if (provider == ProviderName.Copilot && scope == InstallScope.User)
+        {
+            // Copilot CLI expects an explicit tools allowlist; "*" enables all.
+            server["tools"] = new JsonArray { "*" };
+        }
+
         return server;
     }
 
-    private static JsonObject BuildRawServer(JsonObject raw, string assetId)
+    private static JsonObject BuildRawServer(JsonObject raw, string assetId, ProviderName provider, InstallScope scope)
     {
         var transportText = StringValue(raw, "transport") ?? StringValue(raw, "type") ?? "stdio";
         var transport = EnumParsers.ParseTransport(transportText, $"MCP asset '{assetId}'");
@@ -118,7 +146,11 @@ public static class McpMerger
         {
             server["command"] = StringValue(raw, "command") ?? "";
             server["args"] = StringArray(raw["args"]);
-            server["env"] = EnvObjectFromRaw(raw, assetId);
+            if (!OmitEnvObject(provider, scope))
+            {
+                server["env"] = EnvObjectFromRaw(raw, assetId, provider, scope);
+            }
+
             var cwd = StringValue(raw, "cwd");
             if (!string.IsNullOrWhiteSpace(cwd)) server["cwd"] = cwd;
         }
@@ -130,7 +162,7 @@ public static class McpMerger
                 var normalized = new JsonObject();
                 foreach (var (header, value) in headers)
                 {
-                    normalized[header] = "${" + (value?.GetValue<string>() ?? "") + "}";
+                    normalized[header] = EnvPlaceholder(provider, scope, value?.GetValue<string>() ?? "");
                 }
 
                 server["headers"] = normalized;
@@ -231,14 +263,25 @@ public static class McpMerger
         AddTomlArray(lines, "enabled_tools", StringArray(server["tools"]));
         if (server["headers"] is JsonObject headers && headers.Count > 0)
         {
+            // Codex maps headers to environment variables via env_http_headers,
+            // so the value is the env var NAME, not a placeholder.
             var headerPairs = headers
                 .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(x => TomlKey(x.Key) + " = " + TomlString(x.Value?.GetValue<string>() ?? ""))
+                .Select(x => TomlKey(x.Key) + " = " + TomlString(EnvVarName(x.Value?.GetValue<string>() ?? "")))
                 .ToList();
-            lines.Add("headers = { " + string.Join(", ", headerPairs) + " }");
+            lines.Add("env_http_headers = { " + string.Join(", ", headerPairs) + " }");
         }
 
         return string.Join(Environment.NewLine, lines) + Environment.NewLine;
+    }
+
+    /// <summary>Strips a ${VAR} or ${env:VAR} placeholder down to the bare env var name.</summary>
+    private static string EnvVarName(string placeholder)
+    {
+        var name = placeholder.Trim();
+        if (name.StartsWith("${", StringComparison.Ordinal) && name.EndsWith('}')) name = name[2..^1];
+        if (name.StartsWith("env:", StringComparison.Ordinal)) name = name[4..];
+        return name;
     }
 
     private static string TransportName(McpTransport transport) => transport.ToString().ToLowerInvariant();
@@ -255,20 +298,24 @@ public static class McpMerger
             .FirstOrDefault();
     }
 
-    private static JsonObject EnvObject(IEnumerable<string> envVars)
+    private static JsonObject EnvObject(IEnumerable<string> envVars, ProviderName provider, InstallScope scope)
     {
         var env = new JsonObject();
         foreach (var variable in envVars.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
         {
-            env[variable] = "${" + variable + "}";
+            env[variable] = EnvPlaceholder(provider, scope, variable);
         }
 
         return env;
     }
 
-    private static JsonObject EnvObjectFromRaw(JsonObject raw, string assetId)
+    private static JsonObject EnvObjectFromRaw(JsonObject raw, string assetId, ProviderName provider, InstallScope scope)
     {
-        if (raw["envVars"] is JsonArray envVars) return EnvObject(envVars.Select(x => x?.GetValue<string>() ?? ""));
+        if (raw["envVars"] is JsonArray envVars)
+        {
+            return EnvObject(envVars.Select(x => x?.GetValue<string>() ?? ""), provider, scope);
+        }
+
         var env = new JsonObject();
         if (raw["env"] is not JsonObject rawEnv) return env;
 
@@ -282,7 +329,7 @@ public static class McpMerger
                     "Secrets never live in the catalog. Users set the variable in their environment.");
             }
 
-            env[key] = "${" + key + "}";
+            env[key] = EnvPlaceholder(provider, scope, key);
         }
 
         return env;

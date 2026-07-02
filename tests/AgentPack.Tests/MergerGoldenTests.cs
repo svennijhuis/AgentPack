@@ -36,18 +36,63 @@ public class MergerGoldenTests
     }
 
     [Fact]
-    public void CopilotProjectMcpUsesServersRootKey()
+    public void CopilotProjectMcpGolden()
     {
+        // .vscode/mcp.json: root key "servers", env vars via VS Code's ${env:VAR} syntax.
         var output = MergeMcp(ProviderName.Copilot, InstallScope.Project, Path.Combine(".vscode", "mcp.json"));
         Assert.Contains("\"servers\"", output);
         Assert.DoesNotContain("\"mcpServers\"", output);
+        Assert.Contains("\"GITHUB_TOKEN\": \"${env:GITHUB_TOKEN}\"", output);
     }
 
     [Fact]
-    public void CopilotUserMcpUsesMcpServersRootKey()
+    public void CopilotUserMcpGolden()
     {
+        // Copilot CLI documents no placeholder expansion: env object omitted
+        // (stdio servers inherit the shell env) and tools allowlist is explicit.
         var output = MergeMcp(ProviderName.Copilot, InstallScope.User, Path.Combine(".copilot", "mcp-config.json"));
+        Assert.Equal(Normalize("""
+            {
+              "mcpServers": {
+                "github": {
+                  "type": "stdio",
+                  "command": "github-mcp-server",
+                  "args": [],
+                  "tools": [
+                    "*"
+                  ]
+                }
+              }
+            }
+            """), Normalize(output));
+    }
+
+    [Fact]
+    public void CursorMcpUsesEnvColonPlaceholders()
+    {
+        var output = MergeMcp(ProviderName.Cursor, InstallScope.Project, Path.Combine(".cursor", "mcp.json"));
         Assert.Contains("\"mcpServers\"", output);
+        Assert.Contains("\"GITHUB_TOKEN\": \"${env:GITHUB_TOKEN}\"", output);
+    }
+
+    [Fact]
+    public void CodexHttpMcpUsesEnvHttpHeaders()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.Asset(AssetKind.Mcp, "remote-api", mcp: new McpServer
+        {
+            Server = "remote-api",
+            Transport = McpTransport.Http,
+            Url = "https://mcp.example.com/mcp",
+            HeaderEnvVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Authorization"] = "API_TOKEN" }
+        });
+        var targetPath = Path.Combine(temp.Path, ".codex", "config.toml");
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Mcp, Path.Combine(".codex", "config.toml"), InstallMode.MergeMcp);
+        McpMerger.Apply(asset, null, target, targetPath, InstallScope.Project, _ => { });
+
+        var output = File.ReadAllText(targetPath);
+        Assert.Contains("env_http_headers = { Authorization = \"API_TOKEN\" }", output);
+        Assert.DoesNotContain("${", output);
     }
 
     [Fact]

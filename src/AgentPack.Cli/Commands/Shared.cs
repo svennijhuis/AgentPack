@@ -245,7 +245,37 @@ public static class CommandHelpers
         var scopeRoot = installer.ScopeRoot(scope);
         var results = installer.Apply(plan.Items, loaded, scope, item => ResolveDrift(item, settings, scope, scopeRoot));
         Output.ApplyResults(results);
+        PrintFollowUps(results, scope);
         return 0;
+    }
+
+    /// <summary>Provider-specific steps the user still has to do after a successful apply.</summary>
+    private static void PrintFollowUps(IReadOnlyList<ApplyResult> results, InstallScope scope)
+    {
+        var applied = results
+            .Where(x => x.Outcome is ApplyOutcome.Installed or ApplyOutcome.Updated)
+            .Select(x => x.Item)
+            .ToList();
+
+        var copilotRepoHooks = applied
+            .Where(x => x.Provider == ProviderName.Copilot && x.Asset.Kind == AssetKind.Hooks && scope == InstallScope.Project)
+            .Select(x => x.Asset.Id)
+            .ToList();
+        if (copilotRepoHooks.Count > 0)
+        {
+            Output.Info($"Next step (copilot): commit .github/hooks/ ({string.Join(", ", copilotRepoHooks)}). " +
+                        "Copilot CLI picks it up immediately; the Copilot cloud coding agent reads hooks from the default branch only.");
+        }
+
+        var envVars = applied
+            .Where(x => x.Asset.Mcp is not null)
+            .SelectMany(x => x.Asset.Mcp!.EnvVars.Concat(x.Asset.Mcp!.HeaderEnvVars.Values))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (envVars.Count > 0)
+        {
+            Output.Info($"Next step (mcp): set {string.Join(", ", envVars)} in your environment — values are never stored in provider configs.");
+        }
     }
 
     private static DriftAction ResolveDrift(InstallPlanItem item, ApplySettings settings, InstallScope scope, string scopeRoot)

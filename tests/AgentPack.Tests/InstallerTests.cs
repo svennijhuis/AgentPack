@@ -34,14 +34,59 @@ public class InstallerTests
     {
         using var temp = new TempDir();
         var paths = TestData.Paths(temp);
-        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard", hook: new HookSpec());
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Rules, "style",
+            files: new Dictionary<string, string> { ["style.mdc"] = "rule\n" });
         var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
 
         var plan = new Installer(paths).Plan(loaded, [asset], ProviderNames.All, InstallScope.Project);
 
-        Assert.Equal(2, plan.Items.Count); // claude + cursor
-        Assert.Equal(2, plan.Skipped.Count); // codex + copilot, with reasons
+        Assert.Single(plan.Items); // cursor only
+        Assert.Equal(3, plan.Skipped.Count); // claude + codex + copilot, with reasons
         Assert.All(plan.Skipped, skip => Assert.False(string.IsNullOrWhiteSpace(skip.Reason)));
+    }
+
+    [Fact]
+    public void HooksInstallForAllFourProviders()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard",
+            hook: new HookSpec { Command = "hook.sh" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+
+        var plan = installer.Plan(loaded, [asset], ProviderNames.All, InstallScope.Project);
+        Assert.Equal(4, plan.Items.Count);
+        Assert.Empty(plan.Skipped);
+
+        var results = installer.Apply(plan.Items, loaded, InstallScope.Project, _ => DriftAction.Keep);
+        Assert.All(results, r => Assert.Equal(ApplyOutcome.Installed, r.Outcome));
+        Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "settings.json")));
+        Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".codex", "hooks.json")));
+        Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".github", "hooks", "guard.json")));
+        Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".cursor", "hooks.json")));
+    }
+
+    [Fact]
+    public void RemovingCopilotHookDeletesItsConfigFileAndContent()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard",
+            hook: new HookSpec { Command = "hook.sh" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+        installer.Apply(installer.Plan(loaded, [asset], [ProviderName.Copilot, ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+
+        installer.Remove(kind: null, ["guard"], providers: null, InstallScope.Project);
+
+        // Copilot's per-asset file and content are gone; Claude's shared settings.json survives.
+        Assert.False(File.Exists(Path.Combine(paths.WorkingDirectory, ".github", "hooks", "guard.json")));
+        Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".github", "hooks", "guard")));
+        Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "hooks", "guard")));
+        Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "settings.json")));
+        Assert.Empty(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
     }
 
     [Fact]

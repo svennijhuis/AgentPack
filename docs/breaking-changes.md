@@ -20,16 +20,15 @@
 - `plan add`/`plan upgrade` subcommands became `agentpack plan ...` (add dry-run) and `agentpack outdated` (upgrade dry-run).
 - Locally-modified installs are no longer silently skipped on apply: the CLI prompts (overwrite / keep / diff / abort), or honors `--force` / `--keep-local` / `--yes` in scripts.
 
-### Provider mappings (invented paths removed)
+### Provider mappings (audited against product docs)
 
-These previously "installed" to locations no product reads; they are now explicit skips:
-
-- Codex hooks (`.codex/hooks.json`) — Codex has no hook system.
-- Copilot hooks (`.github/hooks/*.json`) — Copilot has no hook system.
-- Codex rules (`.codex/rules/*.rules`) — use instructions (AGENTS.md).
+- Hooks now install for **all four providers**, each in its real format:
+  Claude `.claude/settings.json`, Codex `.codex/hooks.json` (Claude-style, PascalCase events),
+  Copilot one file per hook at `.github/hooks/<id>.json` (`version: 1`, `bash`/`powershell`, `timeoutSec`),
+  Cursor `.cursor/hooks.json` (`version: 1`, camelCase events, `timeout`).
+- Codex rules (`.codex/rules/*.rules`) removed — invented path; use instructions (AGENTS.md).
 - Copilot project MCP now merges into `.vscode/mcp.json` (root key `servers`) instead of writing a manual payload under `.agentpack/copilot-mcp/`.
 - Cursor skills moved from `.agents/skills/` to `.cursor/skills/`.
-- Cursor hook entries now use Cursor's real event names (`beforeShellExecution`, ...) and entry shape.
 - Claude prompts now install as slash commands (`.claude/commands/<id>.md`).
 
 ### Lockfiles

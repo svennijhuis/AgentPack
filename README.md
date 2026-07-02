@@ -106,13 +106,13 @@ Governance: branch protection + CODEOWNERS on `assets/**` (e.g. security team ow
 | Kind | Claude | Codex | Copilot | Cursor |
 |---|---|---|---|---|
 | skills | ✓ | ✓ | ✓ | ✓ |
-| hooks | ✓ | — | — | ✓ |
+| hooks | ✓ | ✓ | ✓ | ✓ |
 | mcp | ✓ | ✓ | ✓ | ✓ |
 | instructions | ✓ | ✓ | ✓ | ✓ |
 | rules | — | — | — | ✓ |
 | prompts | ✓ | ✓ | ✓ | ✓ |
 
-"—" means the product has no such concept; agentpack reports an explicit skip with the reason instead of writing files nothing reads. Exact paths and formats: [docs/provider-mapping.md](docs/provider-mapping.md).
+Skills, hooks, and MCP work on all four providers — each in the product's native config format (e.g. hooks: `.claude/settings.json`, `.codex/hooks.json`, `.github/hooks/<id>.json`, `.cursor/hooks.json`). "—" means the product has no such concept; agentpack reports an explicit skip with the reason instead of writing files nothing reads. Exact paths and formats: [docs/provider-mapping.md](docs/provider-mapping.md).
 
 ## Commands
 

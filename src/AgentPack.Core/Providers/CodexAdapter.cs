@@ -4,7 +4,8 @@ namespace AgentPack.Core;
 
 /// <summary>
 /// OpenAI Codex CLI. Skills follow the cross-tool .agents/skills convention;
-/// MCP servers live in .codex/config.toml. Codex has no hook system.
+/// MCP servers live in .codex/config.toml; hooks merge into .codex/hooks.json
+/// (Claude-style structure, PascalCase events).
 /// See docs/provider-mapping.md for the audited matrix.
 /// </summary>
 public sealed class CodexAdapter : IProviderAdapter
@@ -27,7 +28,8 @@ public sealed class CodexAdapter : IProviderAdapter
 
             AssetKind.Prompts => Supported(Name, asset, Path.Combine(".codex", "prompts", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
 
-            AssetKind.Hooks => Unsupported("Codex has no hook system."),
+            AssetKind.Hooks => Supported(Name, asset, Path.Combine(".codex", "hooks.json"), InstallMode.MergeHook),
+
             AssetKind.Rules => Unsupported("Codex has no rules files — use an instructions asset (AGENTS.md) instead."),
             AssetKind.Tools => Unsupported("Codex has no generic tools directory."),
             AssetKind.Templates => Unsupported("Codex has no templates directory."),

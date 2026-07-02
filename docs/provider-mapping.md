@@ -23,9 +23,9 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 |---|---|---|---|
 | skills | `.agents/skills/<id>/` | `~/.agents/skills/<id>/` | copy tree (cross-tool `.agents` convention) |
 | mcp | `.codex/config.toml` | `~/.codex/config.toml` | TOML merge, `[mcp_servers.<name>]` sections |
+| hooks | `.codex/hooks.json` + `.codex/hooks/<id>/` | `~/.codex/hooks.json` + `~/.codex/hooks/<id>/` | JSON merge — Claude-style structure (PascalCase events, `matcher`, `timeout`); see [Codex hooks docs](https://developers.openai.com/codex/hooks) |
 | instructions | `AGENTS.md` | `~/.codex/AGENTS.md` | single file |
 | prompts | `.codex/prompts/<id>.md` | `~/.codex/prompts/<id>.md` | single file (custom prompt) |
-| hooks | — | — | unsupported: Codex has no hook system |
 | rules | — use instructions | — | unsupported |
 
 ## GitHub Copilot
@@ -34,9 +34,9 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 |---|---|---|---|
 | skills | `.github/skills/<id>/` | `~/.copilot/skills/<id>/` | copy tree (VS Code agent skills / Copilot CLI) |
 | mcp | `.vscode/mcp.json` — root key **`servers`** | `~/.copilot/mcp-config.json` — root key `mcpServers` | JSON merge |
+| hooks | `.github/hooks/<id>.json` + `.github/hooks/<id>/` | `~/.copilot/hooks/<id>.json` + `~/.copilot/hooks/<id>/` | one JSON file per hook (`version: 1`, camelCase events, `bash`/`powershell` commands, `timeoutSec`); a `hook.ps1` twin next to `hook.sh` is registered automatically for Windows; see [Copilot CLI hooks docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks) |
 | instructions | `.github/instructions/<id>.instructions.md` | — managed in the editor | single file |
 | prompts | `.github/prompts/<id>.prompt.md` | — managed in the editor | single file |
-| hooks | — | — | unsupported: Copilot has no hook system |
 | rules | — use instructions | — | unsupported |
 
 ## Cursor
@@ -52,16 +52,16 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 
 ## Hook trigger mapping
 
-Catalog triggers are normalized (`preToolUse`, `postToolUse`, `stop`, `sessionStart`, `userPromptSubmit`, `notification`) and translated per provider:
+Catalog triggers are normalized (`preToolUse`, `postToolUse`, `stop`, `sessionStart`, `userPromptSubmit`, `notification`) and translated per provider. All four providers have hook systems:
 
-| Catalog trigger | Claude Code event | Cursor event |
-|---|---|---|
-| preToolUse | `PreToolUse` | `beforeShellExecution` |
-| postToolUse | `PostToolUse` | `afterFileEdit` |
-| stop | `Stop` | `stop` |
-| userPromptSubmit | `UserPromptSubmit` | `beforeSubmitPrompt` |
-| sessionStart | `SessionStart` | — (error with hint) |
-| notification | `Notification` | — (error with hint) |
+| Catalog trigger | Claude Code | Codex | Copilot CLI | Cursor |
+|---|---|---|---|---|
+| preToolUse | `PreToolUse` | `PreToolUse` | `preToolUse` | `preToolUse` |
+| postToolUse | `PostToolUse` | `PostToolUse` | `postToolUse` | `postToolUse` |
+| stop | `Stop` | `Stop` | `agentStop` | `stop` |
+| sessionStart | `SessionStart` | `SessionStart` | `sessionStart` | `sessionStart` |
+| userPromptSubmit | `UserPromptSubmit` | `UserPromptSubmit` | `userPromptSubmitted` | `beforeSubmitPrompt` |
+| notification | `Notification` | — (error with hint) | — (error with hint) | — (error with hint) |
 
 ## Merge safety guarantees
 

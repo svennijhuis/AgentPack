@@ -4,8 +4,7 @@ version: 1.0.0
 description: Blocks likely secrets before tool execution.
 groups: [security, backend, infra]
 tags: [required, policy]
-# providers omitted = available for all providers.
-# Hooks only exist in Claude Code and Cursor; other providers are skipped with an explicit reason.
+# providers omitted = available for all providers (hooks install natively on all four)
 owner: security-platform
 status: recommended
 channel: stable

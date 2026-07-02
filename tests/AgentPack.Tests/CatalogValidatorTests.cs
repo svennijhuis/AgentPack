@@ -104,9 +104,10 @@ public class CatalogValidatorTests
     public void AssetWithNoInstallableProviderIsAnError()
     {
         using var temp = new TempDir();
-        // Hooks limited to providers without hook systems: nothing can install it.
-        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "nowhere", hook: new HookSpec());
-        asset = asset with { Providers = [ProviderName.Codex, ProviderName.Copilot] };
+        // Rules limited to providers without rules files: nothing can install it.
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Rules, "nowhere",
+            files: new Dictionary<string, string> { ["nowhere.mdc"] = "rule\n" });
+        asset = asset with { Providers = [ProviderName.Codex, ProviderName.Copilot, ProviderName.Claude] };
 
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset));
         Assert.Contains(report.Issues, x => x.Code == "asset.provider.none" && x.Severity == IssueSeverity.Error);

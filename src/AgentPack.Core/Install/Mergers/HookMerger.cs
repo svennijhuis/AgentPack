@@ -5,9 +5,13 @@ namespace AgentPack.Core;
 
 /// <summary>
 /// Installs hook content into the provider's support folder and registers it in
-/// the provider's hook config. Only Claude Code (.claude/settings.json) and
-/// Cursor (.cursor/hooks.json) have hook systems; other providers report
-/// hooks as unsupported at the adapter level and never reach this merger.
+/// the provider's hook config. All four providers support hooks, in three dialects:
+///
+/// - Claude Code (.claude/settings.json) and Codex (.codex/hooks.json): shared file,
+///   PascalCase events, entries wrapped in a matcher group.
+/// - Cursor (.cursor/hooks.json): shared file, version 1, camelCase events, flat entries.
+/// - Copilot CLI (.github/hooks/&lt;id&gt;.json, user: ~/.copilot/hooks/&lt;id&gt;.json):
+///   one file per hook, version 1, camelCase events, bash/powershell entries.
 /// </summary>
 public static class HookMerger
 {
@@ -15,7 +19,7 @@ public static class HookMerger
 
     public static string Apply(Asset asset, string sourcePath, InstallTarget target, string targetPath, string scopeRoot, InstallScope scope, Action<string> backupIfExists)
     {
-        var supportPath = Path.GetFullPath(Path.Combine(scopeRoot, SupportRelativePath(target.Provider, asset.Id)));
+        var supportPath = Path.GetFullPath(Path.Combine(scopeRoot, SupportRelativePath(target.Provider, asset.Id, scope)));
         CopyHookContent(sourcePath, supportPath, backupIfExists);
 
         var commandPath = ResolveHookCommand(asset, supportPath);
@@ -23,70 +27,102 @@ public static class HookMerger
             ? commandPath
             : "./" + Path.GetRelativePath(scopeRoot, commandPath).Replace(Path.DirectorySeparatorChar, '/');
 
-        MergeConfig(targetPath, target.Provider, asset, command, backupIfExists);
+        switch (target.Provider)
+        {
+            case ProviderName.Claude:
+            case ProviderName.Codex:
+                MergeSharedConfig(targetPath, asset, backupIfExists,
+                    (hooks, changedAsset) => MergeClaudeStyleHook(hooks, changedAsset, command, ClaudeStyleEvent(target.Provider, asset)),
+                    setVersion: false);
+                break;
+
+            case ProviderName.Cursor:
+                MergeSharedConfig(targetPath, asset, backupIfExists,
+                    (hooks, changedAsset) => MergeCursorHook(hooks, changedAsset, command),
+                    setVersion: true);
+                break;
+
+            case ProviderName.Copilot:
+                WriteCopilotHookFile(targetPath, asset, command, supportPath, backupIfExists);
+                break;
+
+            default:
+                throw new AgentPackException($"{target.Provider.Display()} hook installation is not implemented.");
+        }
+
         return ContentHash.Compute(targetPath);
     }
 
-    /// <summary>The exact config fragment that will be merged — used for previews before applying.</summary>
+    /// <summary>The exact config fragment that will be written — used for previews before applying.</summary>
     public static string Preview(Asset asset, InstallTarget target, string scopeRoot)
     {
-        var command = "./" + SupportRelativePath(target.Provider, asset.Id).Replace(Path.DirectorySeparatorChar, '/') + "/" + (asset.Hook?.Command ?? "hook.sh");
-        JsonObject fragment = target.Provider == ProviderName.Cursor
-            ? new JsonObject
+        var command = "./" + SupportRelativePath(target.Provider, asset.Id, InstallScope.Project).Replace(Path.DirectorySeparatorChar, '/')
+                      + "/" + (asset.Hook?.Command ?? "hook.sh");
+
+        JsonObject fragment = target.Provider switch
+        {
+            ProviderName.Cursor => new JsonObject
             {
-                ["hooks"] = new JsonObject { [CursorEvent(asset)] = new JsonArray { CursorEntry(command) } }
-            }
-            : new JsonObject
+                ["hooks"] = new JsonObject { [CursorEvent(asset)] = new JsonArray { CursorEntry(asset, command) } }
+            },
+            ProviderName.Copilot => CopilotHookDocument(asset, command, powershellCommand: null),
+            _ => new JsonObject
             {
                 ["hooks"] = new JsonObject
                 {
-                    [ClaudeEvent(asset)] = new JsonArray
+                    [ClaudeStyleEvent(target.Provider, asset)] = new JsonArray
                     {
                         new JsonObject
                         {
                             ["matcher"] = Matcher(asset),
-                            ["hooks"] = new JsonArray { ClaudeHandler(asset, command) }
+                            ["hooks"] = new JsonArray { ClaudeStyleHandler(asset, command) }
                         }
                     }
                 }
-            };
+            }
+        };
 
         return fragment.ToJsonString(JsonOptions);
     }
 
-    public static string SupportRelativePath(ProviderName provider, string assetId) => provider switch
+    /// <summary>Where the hook's executable content lives, per provider and scope.</summary>
+    public static string SupportRelativePath(ProviderName provider, string assetId, InstallScope scope) => provider switch
     {
         ProviderName.Claude => Path.Combine(".claude", "hooks", assetId),
+        ProviderName.Codex => Path.Combine(".codex", "hooks", assetId),
         ProviderName.Cursor => Path.Combine(".cursor", "hooks", assetId),
-        _ => throw new AgentPackException($"{provider.Display()} has no hook system.")
+        ProviderName.Copilot => scope == InstallScope.User
+            ? Path.Combine(".copilot", "hooks", assetId)
+            : Path.Combine(".github", "hooks", assetId),
+        _ => throw new AgentPackException($"{provider.Display()} hook installation is not implemented.")
     };
 
-    private static void MergeConfig(string path, ProviderName provider, Asset asset, string command, Action<string> backupIfExists)
+    /// <summary>Copilot hook config files are per-asset, so removal may delete them; the other providers share one config file.</summary>
+    public static bool IsSharedConfigFile(ProviderName provider) => provider != ProviderName.Copilot;
+
+    private static void MergeSharedConfig(string path, Asset asset, Action<string> backupIfExists, Func<JsonObject, Asset, bool> merge, bool setVersion)
     {
         var root = File.Exists(path)
             ? JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject()
             : new JsonObject();
 
+        if (setVersion) root["version"] ??= 1;
         if (root["hooks"] is not JsonObject hooks)
         {
             hooks = new JsonObject();
             root["hooks"] = hooks;
         }
 
-        var changed = provider == ProviderName.Cursor
-            ? MergeCursorHook(root, hooks, asset, command)
-            : MergeClaudeHook(hooks, asset, command);
-
+        var changed = merge(hooks, asset);
         if (!changed && File.Exists(path)) return;
         if (File.Exists(path)) backupIfExists(path);
         AtomicWrite.Text(path, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
-    private static bool MergeClaudeHook(JsonObject hooks, Asset asset, string command)
+    private static bool MergeClaudeStyleHook(JsonObject hooks, Asset asset, string command, string eventName)
     {
-        var eventName = ClaudeEvent(asset);
         var matcher = Matcher(asset);
-        var handler = ClaudeHandler(asset, command);
+        var handler = ClaudeStyleHandler(asset, command);
 
         if (hooks[eventName] is not JsonArray eventArray)
         {
@@ -115,11 +151,10 @@ public static class HookMerger
         return true;
     }
 
-    private static bool MergeCursorHook(JsonObject root, JsonObject hooks, Asset asset, string command)
+    private static bool MergeCursorHook(JsonObject hooks, Asset asset, string command)
     {
-        root["version"] ??= 1;
         var eventName = CursorEvent(asset);
-        var entry = CursorEntry(command);
+        var entry = CursorEntry(asset, command);
         if (hooks[eventName] is not JsonArray eventArray)
         {
             hooks[eventName] = new JsonArray { entry };
@@ -131,27 +166,106 @@ public static class HookMerger
         return true;
     }
 
-    private static JsonObject ClaudeHandler(Asset asset, string command) => new()
+    private static void WriteCopilotHookFile(string path, Asset asset, string command, string supportPath, Action<string> backupIfExists)
+    {
+        // A PowerShell twin next to the bash script makes the hook cross-platform.
+        var powershell = FindPowershellTwin(supportPath, command);
+        var document = CopilotHookDocument(asset, command, powershell);
+
+        if (File.Exists(path))
+        {
+            var existing = JsonNode.Parse(File.ReadAllText(path));
+            if (JsonNode.DeepEquals(existing, document)) return;
+            backupIfExists(path);
+        }
+
+        AtomicWrite.Text(path, document.ToJsonString(JsonOptions) + Environment.NewLine);
+    }
+
+    private static JsonObject CopilotHookDocument(Asset asset, string bashCommand, string? powershellCommand)
+    {
+        var entry = new JsonObject
+        {
+            ["type"] = "command",
+            ["bash"] = bashCommand,
+            ["timeoutSec"] = asset.Hook?.TimeoutSec ?? 30
+        };
+        if (powershellCommand is not null) entry["powershell"] = powershellCommand;
+
+        return new JsonObject
+        {
+            ["version"] = 1,
+            ["hooks"] = new JsonObject { [CopilotEvent(asset)] = new JsonArray { entry } }
+        };
+    }
+
+    private static string? FindPowershellTwin(string supportPath, string bashCommand)
+    {
+        if (!Directory.Exists(supportPath)) return null;
+        var twinName = Path.GetFileNameWithoutExtension(bashCommand) + ".ps1";
+        return Directory.EnumerateFiles(supportPath, "*.ps1", SearchOption.AllDirectories)
+            .Any(f => Path.GetFileName(f).Equals(twinName, StringComparison.OrdinalIgnoreCase))
+            ? Path.ChangeExtension(bashCommand, ".ps1")
+            : null;
+    }
+
+    private static JsonObject ClaudeStyleHandler(Asset asset, string command) => new()
     {
         ["type"] = "command",
         ["command"] = command,
         ["timeout"] = asset.Hook?.TimeoutSec ?? 30
     };
 
-    private static JsonObject CursorEntry(string command) => new() { ["command"] = command };
-
-    private static string ClaudeEvent(Asset asset) => (asset.Hook?.Trigger ?? HookTrigger.PreToolUse).ToString();
-
-    private static string CursorEvent(Asset asset) => (asset.Hook?.Trigger ?? HookTrigger.PreToolUse) switch
+    private static JsonObject CursorEntry(Asset asset, string command)
     {
-        HookTrigger.PreToolUse => "beforeShellExecution",
-        HookTrigger.PostToolUse => "afterFileEdit",
+        var entry = new JsonObject
+        {
+            ["command"] = command,
+            ["timeout"] = asset.Hook?.TimeoutSec ?? 30
+        };
+        if (!string.IsNullOrWhiteSpace(asset.Hook?.Tool)) entry["matcher"] = asset.Hook.Tool;
+        return entry;
+    }
+
+    private static string ClaudeStyleEvent(ProviderName provider, Asset asset)
+    {
+        var trigger = Trigger(asset);
+        if (provider == ProviderName.Codex && trigger == HookTrigger.Notification)
+        {
+            throw new AgentPackException(
+                "Codex hooks do not support the notification trigger.",
+                "Supported for Codex: preToolUse, postToolUse, stop, sessionStart, userPromptSubmit.");
+        }
+
+        // Claude Code and Codex share the PascalCase event vocabulary.
+        return trigger.ToString();
+    }
+
+    private static string CursorEvent(Asset asset) => Trigger(asset) switch
+    {
+        HookTrigger.PreToolUse => "preToolUse",
+        HookTrigger.PostToolUse => "postToolUse",
         HookTrigger.Stop => "stop",
+        HookTrigger.SessionStart => "sessionStart",
         HookTrigger.UserPromptSubmit => "beforeSubmitPrompt",
         var trigger => throw new AgentPackException(
             $"Cursor hooks do not support the {EnumParsers.CamelCase(trigger.ToString())} trigger.",
-            "Supported for Cursor: preToolUse, postToolUse, stop, userPromptSubmit.")
+            "Supported for Cursor: preToolUse, postToolUse, stop, sessionStart, userPromptSubmit.")
     };
+
+    private static string CopilotEvent(Asset asset) => Trigger(asset) switch
+    {
+        HookTrigger.PreToolUse => "preToolUse",
+        HookTrigger.PostToolUse => "postToolUse",
+        HookTrigger.Stop => "agentStop",
+        HookTrigger.SessionStart => "sessionStart",
+        HookTrigger.UserPromptSubmit => "userPromptSubmitted",
+        var trigger => throw new AgentPackException(
+            $"Copilot hooks do not support the {EnumParsers.CamelCase(trigger.ToString())} trigger.",
+            "Supported for Copilot: preToolUse, postToolUse, stop, sessionStart, userPromptSubmit.")
+    };
+
+    private static HookTrigger Trigger(Asset asset) => asset.Hook?.Trigger ?? HookTrigger.PreToolUse;
 
     private static string Matcher(Asset asset) => string.IsNullOrWhiteSpace(asset.Hook?.Tool) ? "Bash" : asset.Hook.Tool;
 

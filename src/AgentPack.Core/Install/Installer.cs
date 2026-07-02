@@ -132,7 +132,20 @@ public sealed class Installer
         foreach (var entry in matches)
         {
             var installedPath = ResolveLockPath(entry.Path, root);
-            if (entry.InstallMode is InstallMode.MergeMcp or InstallMode.MergeHook)
+            if (entry.InstallMode == InstallMode.MergeHook)
+            {
+                // The hook's executable content is always ours to delete.
+                var supportPath = Path.GetFullPath(Path.Combine(root, HookMerger.SupportRelativePath(entry.Provider, entry.Id, scope)));
+                if (Directory.Exists(supportPath))
+                {
+                    Backup(supportPath, scope);
+                    Directory.Delete(supportPath, recursive: true);
+                }
+            }
+
+            var isSharedConfig = entry.InstallMode == InstallMode.MergeMcp ||
+                (entry.InstallMode == InstallMode.MergeHook && HookMerger.IsSharedConfigFile(entry.Provider));
+            if (isSharedConfig)
             {
                 // Shared provider config files are never deleted; only the lock entry goes.
                 lockFile.Entries.Remove(entry);

@@ -146,7 +146,7 @@ public class MergerGoldenTests
     {
         using var temp = new TempDir();
         var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "secret-scan",
-            hook: new HookSpec { Trigger = HookTrigger.PreToolUse, Command = "hook.sh" });
+            hook: new HookSpec { Trigger = HookTrigger.PreToolUse, Command = "hook.sh", TimeoutSec = 30 });
         var sourcePath = Path.Combine(temp.Path, "assets", "hooks", "secret-scan", "content");
         var targetPath = Path.Combine(temp.Path, ".cursor", "hooks.json");
         var target = new InstallTarget(ProviderName.Cursor, AssetKind.Hooks, Path.Combine(".cursor", "hooks.json"), InstallMode.MergeHook);
@@ -155,16 +155,101 @@ public class MergerGoldenTests
 
         Assert.Equal(Normalize("""
             {
+              "version": 1,
               "hooks": {
-                "beforeShellExecution": [
+                "preToolUse": [
                   {
-                    "command": "./.cursor/hooks/secret-scan/hook.sh"
+                    "command": "./.cursor/hooks/secret-scan/hook.sh",
+                    "timeout": 30
                   }
                 ]
-              },
-              "version": 1
+              }
             }
             """), Normalize(File.ReadAllText(targetPath)));
+    }
+
+    [Fact]
+    public void CodexHookGolden()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "secret-scan",
+            hook: new HookSpec { Trigger = HookTrigger.PreToolUse, Tool = "Bash", Command = "hook.sh", TimeoutSec = 30 });
+        var sourcePath = Path.Combine(temp.Path, "assets", "hooks", "secret-scan", "content");
+        var targetPath = Path.Combine(temp.Path, ".codex", "hooks.json");
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Hooks, Path.Combine(".codex", "hooks.json"), InstallMode.MergeHook);
+
+        HookMerger.Apply(asset, sourcePath, target, targetPath, temp.Path, InstallScope.Project, _ => { });
+
+        Assert.Equal(Normalize("""
+            {
+              "hooks": {
+                "PreToolUse": [
+                  {
+                    "matcher": "Bash",
+                    "hooks": [
+                      {
+                        "type": "command",
+                        "command": "./.codex/hooks/secret-scan/hook.sh",
+                        "timeout": 30
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+            """), Normalize(File.ReadAllText(targetPath)));
+    }
+
+    [Fact]
+    public void CopilotHookGolden()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "secret-scan",
+            hook: new HookSpec { Trigger = HookTrigger.PreToolUse, Command = "hook.sh", TimeoutSec = 30 });
+        var sourcePath = Path.Combine(temp.Path, "assets", "hooks", "secret-scan", "content");
+        var targetPath = Path.Combine(temp.Path, ".github", "hooks", "secret-scan.json");
+        var target = new InstallTarget(ProviderName.Copilot, AssetKind.Hooks, Path.Combine(".github", "hooks", "secret-scan.json"), InstallMode.MergeHook);
+
+        HookMerger.Apply(asset, sourcePath, target, targetPath, temp.Path, InstallScope.Project, _ => { });
+
+        Assert.Equal(Normalize("""
+            {
+              "version": 1,
+              "hooks": {
+                "preToolUse": [
+                  {
+                    "type": "command",
+                    "bash": "./.github/hooks/secret-scan/hook.sh",
+                    "timeoutSec": 30
+                  }
+                ]
+              }
+            }
+            """), Normalize(File.ReadAllText(targetPath)));
+
+        Assert.True(File.Exists(Path.Combine(temp.Path, ".github", "hooks", "secret-scan", "hook.sh")));
+    }
+
+    [Fact]
+    public void CopilotHookIncludesPowershellTwinWhenPresent()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "cross-os",
+            files: new Dictionary<string, string>
+            {
+                ["hook.sh"] = "#!/usr/bin/env bash\necho ok\n",
+                ["hook.ps1"] = "Write-Output 'ok'\n"
+            },
+            hook: new HookSpec { Command = "hook.sh" });
+        var sourcePath = Path.Combine(temp.Path, "assets", "hooks", "cross-os", "content");
+        var targetPath = Path.Combine(temp.Path, ".github", "hooks", "cross-os.json");
+        var target = new InstallTarget(ProviderName.Copilot, AssetKind.Hooks, Path.Combine(".github", "hooks", "cross-os.json"), InstallMode.MergeHook);
+
+        HookMerger.Apply(asset, sourcePath, target, targetPath, temp.Path, InstallScope.Project, _ => { });
+
+        var output = File.ReadAllText(targetPath);
+        Assert.Contains("\"bash\": \"./.github/hooks/cross-os/hook.sh\"", output);
+        Assert.Contains("\"powershell\": \"./.github/hooks/cross-os/hook.ps1\"", output);
     }
 
     [Fact]

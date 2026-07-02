@@ -1,143 +1,154 @@
 # AgentPack
 
-`agentpack` is a .NET global tool for managing organization-approved AI assets across **Claude Code, Codex, GitHub Copilot, Cursor**, and future providers.
+**One catalog of approved AI assets. Every developer. Every AI tool. One command.**
 
-One catalog repo is the trusted source of truth. Developers install from it; contributions go through pull requests; CI validates everything.
+`agentpack` is a .NET global tool that installs your organization's skills, hooks, MCP servers, instructions, rules, and prompts into **Claude Code, Codex, GitHub Copilot, and Cursor** — each in that product's own native format, so everything works out of the box.
 
-It manages:
+```bash
+agentpack add
+```
 
-- **skills** — agent skills (SKILL.md folders)
-- **hooks** — pre/post tool-use hooks (Claude Code, Cursor)
-- **mcp** — MCP server configs, merged into each provider's config file
-- **instructions** — CLAUDE.md / AGENTS.md / Copilot instructions
-- **rules** — Cursor rules (.mdc)
-- **prompts** — reusable prompts / commands
-- **profiles** — what a team installs, in one command
+```
+? Select assets to install (space toggles, enter confirms)
+  skills
+  ◉ grill-me      1.0.0  Challenges a plan with critical review questions
+  hooks
+  ◉ secret-scan   1.0.0  Blocks likely secrets before tool execution
+  mcp
+  ◯ github        1.0.0  GitHub MCP server (needs GITHUB_TOKEN)
+
+✓ installed grill-me (claude, codex, copilot, cursor) 1.0.0
+✓ installed secret-scan (claude, codex, copilot, cursor) 1.0.0
+```
+
+## What it manages
+
+Everything works on all four providers unless the product itself has no such concept:
+
+| Kind | What it is | Claude | Codex | Copilot | Cursor |
+|---|---|:-:|:-:|:-:|:-:|
+| **skills** | agent skills (SKILL.md folders) | ✓ | ✓ | ✓ | ✓ |
+| **hooks** | pre/post tool-use scripts | ✓ | ✓ | ✓ | ✓ |
+| **mcp** | MCP server configs | ✓ | ✓ | ✓ | ✓ |
+| **instructions** | CLAUDE.md / AGENTS.md / Copilot instructions | ✓ | ✓ | ✓ | ✓ |
+| **prompts** | reusable prompts / slash commands | ✓ | ✓ | ✓ | ✓ |
+| **rules** | Cursor rules (.mdc) | — | — | — | ✓ |
+| **profiles** | everything a team needs, in one command | ✓ | ✓ | ✓ | ✓ |
+
+"—" = the product has no such feature; agentpack says so explicitly instead of writing files nothing reads. Every path is verified against official docs and pinned by tests: [provider-mapping.md](docs/provider-mapping.md).
 
 ## Install
 
 ```bash
 dotnet tool install -g AgentPack --add-source <your-org-feed>
-agentpack --help
 ```
 
-## Quickstart (consumer)
+Works on Windows (PowerShell), macOS, and Linux.
+
+## Use it
+
+### I want the tools my team uses
 
 ```bash
-# In a repo that uses Claude Code / Cursor / Copilot / Codex:
-agentpack add                 # interactive checklist of everything installable
-agentpack add grill-me        # or install by id
-agentpack add --group backend # or install a whole group
-agentpack profile apply backend   # or apply your team's profile
-
-agentpack status              # what is installed, and what has updates
-agentpack upgrade             # upgrade (interactive checklist, asks before overwriting local edits)
-agentpack outdated            # report only
-agentpack remove grill-me
+agentpack profile apply backend      # everything your team standardized on
 ```
 
-Providers are auto-detected from the repo (`.claude/`, `.cursor/`, `AGENTS.md`, ...) or forced with `--claude --codex --copilot --cursor`. Scope defaults to the project when inside a git repo; `--user` installs into your home directory instead.
+### I want to browse and pick
 
-If an installed asset was modified locally, `add`/`upgrade` ask what to do — overwrite, keep, or show a diff — instead of silently clobbering it. `--force` / `--keep-local` / `--yes` make it scriptable. Every overwrite is backed up under `.agentpack/backups/`.
+```bash
+agentpack add                        # interactive checklist
+agentpack add grill-me secret-scan   # or by name
+agentpack add --group security       # or by group
+```
 
-## Quickstart (author)
+### I want to stay up to date
 
-Everything derivable is derived: `id` and `kind` come from the folder path, content lives in `content/`, checksums live in the generated `catalog.lock.yaml` — never written by hand.
+```bash
+agentpack status                     # what's installed, what has updates
+agentpack upgrade                    # update (asks before touching your local edits)
+agentpack remove grill-me            # uninstall (backup kept)
+```
+
+That's it. Providers are auto-detected from your repo (`.claude/`, `.cursor/`, `AGENTS.md`, ...); force them with `--claude --codex --copilot --cursor`. Inside a git repo installs are project-scoped; `--user` installs to your home directory instead.
+
+### It never surprises you
+
+- **Your local edits are safe.** If you changed an installed file, agentpack asks: overwrite, keep, show diff, or abort. Never silent.
+- **Your configs are safe.** Merging into `settings.json` / `mcp.json` / `config.toml` only adds entries — existing ones are never touched; a conflict is an error, not an overwrite.
+- **Everything is undoable.** Any file agentpack replaces is backed up to `.agentpack/backups/` first.
+- **It tells you the next step.** "Set GITHUB_TOKEN in your environment", "commit .github/hooks/", "approve the MCP server when Claude Code asks" — printed right after install.
+- **Scripts work too.** `--yes`, `--force`, `--keep-local`; prompts disappear automatically in CI.
+- Typos get help: `agentpack statsu` → *Did you mean 'agentpack status'?*
+
+## Add your own asset (5 minutes)
 
 ```bash
 agentpack new skills grill-me --group review
-# edit assets/skills/grill-me/content/SKILL.md
-git checkout -b add-grill-me && git add assets && git commit && gh pr create
+# → assets/skills/grill-me/agentpack.yaml + content/SKILL.md
 ```
 
-A complete manifest is ~6 lines:
+Edit the content, open a PR. Done. The manifest is ~5 lines — everything derivable is derived (id and kind from the folder, checksums generated by CI):
 
 ```yaml
-# assets/skills/grill-me/agentpack.yaml
 name: Grill Me
 version: 1.0.0
 description: Challenges a plan with critical review questions.
 groups: [engineering, review]
-# providers omitted = available for all providers
+# providers omitted = works on all providers
 ```
 
-### External assets (from GitHub etc.)
+### Use something from GitHub
 
 ```bash
-agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d
+agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@<commit-sha>
 ```
 
-One line in the manifest, pinned to the exact commit you reviewed:
+Pinned to the exact commit you reviewed — never a moving branch. Installs verify the content hash; upstream changes only arrive through a new PR that a human re-reviews.
 
-```yaml
-source: https://github.com/anthropics/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d
-```
+## For platform / security teams
 
-AgentPack never follows upstream branches. Bumping the ref is a PR — a human re-reviews the upstream change. `agentpack catalog verify-external` (CI) fetches every pinned ref and verifies checksums.
+The catalog is a git repo. Control comes free with your existing workflow:
 
-## Catalog repo layout
+- **Every change is a PR.** CI blocks anything invalid: `agentpack catalog validate`, `catalog lock --check`, `catalog verify-external`.
+- **CODEOWNERS routes review** — e.g. `assets/hooks/**` and external sources to the security team (hooks execute code on dev machines).
+- **Kill switch:** set `status: blocked` on an asset; installs stop immediately.
+- **No secrets in the catalog, ever.** MCP env vars are names; each provider gets its own reference syntax; values stay in the user's shell.
+- **Profiles** define what each team gets: `agentpack profile apply backend` onboards a new hire in one command.
 
 ```text
-catalog.yaml          # groups + profiles
-catalog.lock.yaml     # generated checksums — 'agentpack catalog lock', committed by CI
+catalog.yaml            groups + team profiles
+catalog.lock.yaml       generated checksums (CI)
 assets/
-  skills/grill-me/
-    agentpack.yaml
-    content/SKILL.md
-  hooks/secret-scan/
-    agentpack.yaml
-    content/hook.sh
-  mcp/github/
-    agentpack.yaml    # mcp: section, no content needed
+  skills/grill-me/      agentpack.yaml + content/SKILL.md
+  hooks/secret-scan/    agentpack.yaml + content/hook.sh
+  mcp/github/           agentpack.yaml (mcp: section, no content needed)
 ```
 
-Catalog CI on every PR:
+## All commands
 
-```yaml
-- run: agentpack catalog validate          # manifests, references, checksums
-- run: agentpack catalog lock --check      # lock file up to date?
-- run: agentpack catalog verify-external   # pinned refs still resolve + hash-match
-```
-
-Governance: branch protection + CODEOWNERS on `assets/**` (e.g. security team owns `assets/hooks/**` and all external source changes).
-
-## Provider support
-
-| Kind | Claude | Codex | Copilot | Cursor |
-|---|---|---|---|---|
-| skills | ✓ | ✓ | ✓ | ✓ |
-| hooks | ✓ | ✓ | ✓ | ✓ |
-| mcp | ✓ | ✓ | ✓ | ✓ |
-| instructions | ✓ | ✓ | ✓ | ✓ |
-| rules | — | — | — | ✓ |
-| prompts | ✓ | ✓ | ✓ | ✓ |
-
-Skills, hooks, and MCP work on all four providers — each in the product's native config format (e.g. hooks: `.claude/settings.json`, `.codex/hooks.json`, `.github/hooks/<id>.json`, `.cursor/hooks.json`). "—" means the product has no such concept; agentpack reports an explicit skip with the reason instead of writing files nothing reads. Exact paths and formats: [docs/provider-mapping.md](docs/provider-mapping.md).
-
-## Commands
-
-| Command | What it does |
+| Command | Does |
 |---|---|
-| `add [kind] [id...]` | Install (interactive checklist when no args) |
-| `plan ...` | Dry-run of add |
-| `upgrade` / `outdated` | Update installed assets / report updates |
-| `remove <id...>` | Uninstall (backups kept) |
-| `status` / `diff <id>` | Installed state / local-modification check |
-| `pin` / `unpin <id>` | Hold an asset at its installed version |
-| `new <kind> <id>` | Scaffold a local asset |
-| `import <url@ref>` | Scaffold an external asset |
-| `profile list/plan/apply` | Team profiles |
-| `catalog validate/lock/verify-external` | Catalog CI commands |
-| `source add/list/sync` | Use a remote catalog repo |
-| `doctor` | Environment diagnosis |
+| `add` / `plan` | install (interactive when no args) / dry-run |
+| `upgrade` / `outdated` | update installed assets / just report |
+| `remove` / `status` / `diff` | uninstall / overview / local-edit check |
+| `pin` / `unpin` | hold an asset at its version |
+| `new` / `import` | scaffold a local / external asset for a PR |
+| `profile list\|plan\|apply` | team bundles |
+| `catalog validate\|lock\|verify-external` | CI checks |
+| `source add\|list\|sync` | use a remote catalog repo |
+| `groups` / `list` / `doctor` | discovery and diagnosis |
 
-Exit codes: `0` ok · `1` user error · `2` validation failed · `3` drift/conflict · `70` internal error.
+Exit codes: `0` ok · `1` user error · `2` validation failed · `3` drift/conflict · `70` internal.
+
+## How it works
+
+Diagrams for the whole system — install flow, PR flow, external pinning, state machine: **[docs/how-it-works.md](docs/how-it-works.md)**
 
 ## Development
 
 ```bash
 dotnet build     # warnings are errors
-dotnet test      # 104 tests incl. provider golden files + CLI end-to-end
+dotnet test      # 112 tests: provider golden files, merge formats, CLI end-to-end
 ```
 
-More docs: [how it works (diagrams)](docs/how-it-works.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md) · [breaking changes](docs/breaking-changes.md)
+Docs: [how it works](docs/how-it-works.md) · [provider mapping](docs/provider-mapping.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md) · [breaking changes](docs/breaking-changes.md)

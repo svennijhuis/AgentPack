@@ -276,6 +276,11 @@ public static class CommandHelpers
         {
             Output.Info($"Next step (mcp): set {string.Join(", ", envVars)} in your environment — values are never stored in provider configs.");
         }
+
+        if (scope == InstallScope.Project && applied.Any(x => x.Provider == ProviderName.Claude && x.Asset.Kind == AssetKind.Mcp))
+        {
+            Output.Info("Next step (claude): Claude Code asks you to approve project .mcp.json servers on its next start — accept the prompt to activate them.");
+        }
     }
 
     private static DriftAction ResolveDrift(InstallPlanItem item, ApplySettings settings, InstallScope scope, string scopeRoot)

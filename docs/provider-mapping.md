@@ -79,6 +79,8 @@ Secrets never enter the catalog: MCP env vars are declared **by name** in the ma
 
 Note: Copilot CLI reads MCP servers only from its user-level config; the project-scope Copilot MCP install targets VS Code Copilot (`.vscode/mcp.json`), which the Copilot coding agent also understands.
 
+Out-of-the-box friction each product adds by design (the CLI prints these as "next step" hints after apply): Claude Code asks the user to approve project `.mcp.json` servers on next start; the Copilot cloud coding agent reads repo hooks only from the default branch; MCP env vars must exist in the user's shell.
+
 ## Merge safety guarantees
 
 - Merges never remove or rewrite entries the user already has; an existing server/hook with **different** content is a conflict error (exit code 3), never a silent overwrite.

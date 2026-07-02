@@ -140,4 +140,4 @@ dotnet build     # warnings are errors
 dotnet test      # 104 tests incl. provider golden files + CLI end-to-end
 ```
 
-More docs: [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md) · [breaking changes](docs/breaking-changes.md)
+More docs: [how it works (diagrams)](docs/how-it-works.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md) · [breaking changes](docs/breaking-changes.md)

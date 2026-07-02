@@ -1,0 +1,9 @@
+bin/
+obj/
+outputs/
+*.user
+.DS_Store
+.agentpack/backups/
+.agentpack/lock.json
+catalog.lock.yaml.tmp-*
+*.swp

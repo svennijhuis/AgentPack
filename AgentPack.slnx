@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AgentPack.Cli/AgentPack.Cli.csproj" />
+    <Project Path="src/AgentPack.Core/AgentPack.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AgentPack.Tests/AgentPack.Tests.csproj" />
+  </Folder>
+</Solution>

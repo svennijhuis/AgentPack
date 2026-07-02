@@ -1,0 +1,10 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Grill Me
+version: 1.0.0
+description: Challenges a plan with critical review questions.
+groups: [engineering, review]
+tags: [planning, quality]
+# providers omitted = available for all providers
+owner: developer-platform
+status: recommended
+channel: stable

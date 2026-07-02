@@ -1,0 +1,24 @@
+schemaVersion: "1"
+catalogVersion: 0.2.0
+groups:
+  - id: engineering
+    name: Engineering
+  - id: review
+    name: Review
+  - id: security
+    name: Security
+  - id: backend
+    name: Backend
+  - id: infra
+    name: Infrastructure
+  - id: api
+    name: API
+    status: deprecated
+    replacedBy: backend
+    removeAfter: "2026-12-31"
+profiles:
+  - id: backend
+    name: Backend Team
+    providers: [codex, claude]
+    groups: [backend]
+    assets: [grill-me, secret-scan, github]

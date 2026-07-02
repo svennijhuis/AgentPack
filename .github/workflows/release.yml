@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Pack
+        run: >
+          dotnet pack src/AgentPack.Cli/AgentPack.Cli.csproj
+          --configuration Release
+          --output ./artifacts
+          -p:Version=${{ env.VERSION }}
+
+      # Point this at your organization's internal NuGet feed and add the
+      # NUGET_API_KEY secret before the first release.
+      - name: Push to feed
+        if: ${{ vars.NUGET_FEED_URL != '' }}
+        run: >
+          dotnet nuget push artifacts/*.nupkg
+          --source "${{ vars.NUGET_FEED_URL }}"
+          --api-key "${{ secrets.NUGET_API_KEY }}"
+
+      - name: GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.nupkg
+          generate_release_notes: true

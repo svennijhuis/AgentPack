@@ -1,0 +1,16 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Secret Scan Hook
+version: 1.0.0
+description: Blocks likely secrets before tool execution.
+groups: [security, backend, infra]
+tags: [required, policy]
+# providers omitted = available for all providers.
+# Hooks only exist in Claude Code and Cursor; other providers are skipped with an explicit reason.
+owner: security-platform
+status: recommended
+channel: stable
+hook:
+  trigger: preToolUse
+  tool: Bash
+  command: hook.sh
+  timeoutSec: 30

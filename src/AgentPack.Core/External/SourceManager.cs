@@ -59,6 +59,13 @@ public sealed class SourceManager
         Ensure(ProcessRunner.Run("git", "pull --ff-only", target), $"pull '{source.Name}'");
     }
 
+    /// <summary>
+    /// Finds the catalog, zero-config where possible:
+    /// 1. explicit path; 2. catalog.yaml in the working directory (the catalog repo itself);
+    /// 3. the first registered source (auto-synced on first use);
+    /// 4. the AGENTPACK_CATALOG_URL environment variable (auto-registered and synced),
+    ///    so organizations can bake the catalog in and developers never run 'source add'.
+    /// </summary>
     public string ResolveCatalogPath(string? explicitPath = null)
     {
         if (!string.IsNullOrWhiteSpace(explicitPath)) return Path.GetFullPath(explicitPath);
@@ -68,17 +75,37 @@ public sealed class SourceManager
 
         var config = LoadConfig();
         var first = config.Sources.FirstOrDefault();
+
+        if (first is null)
+        {
+            var envUrl = Environment.GetEnvironmentVariable("AGENTPACK_CATALOG_URL");
+            if (!string.IsNullOrWhiteSpace(envUrl))
+            {
+                var branch = Environment.GetEnvironmentVariable("AGENTPACK_CATALOG_BRANCH") ?? "main";
+                AddSource("org", envUrl, branch);
+                first = LoadConfig().Sources.First();
+            }
+        }
+
         if (first is null)
         {
             throw new AgentPackException(
                 "No catalog found.",
-                "Run from a catalog repo, or configure one with 'agentpack source add <name> <git-url>' and 'agentpack source sync'.");
+                "Run from a catalog repo, register one with 'agentpack source add <name> <git-url>', " +
+                "or set AGENTPACK_CATALOG_URL to your catalog's git URL.");
         }
 
         var cached = Path.Combine(SourceCachePath(first), "catalog.yaml");
         if (!File.Exists(cached))
         {
-            throw new AgentPackException($"Catalog source '{first.Name}' is not synced.", "Run 'agentpack source sync'.");
+            // First use: fetch instead of telling the user to run another command.
+            Sync(first);
+            if (!File.Exists(cached))
+            {
+                throw new AgentPackException(
+                    $"Catalog source '{first.Name}' has no catalog.yaml at its root.",
+                    "Check the repository URL and branch.");
+            }
         }
 
         return cached;

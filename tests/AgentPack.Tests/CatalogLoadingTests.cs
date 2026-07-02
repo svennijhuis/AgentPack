@@ -145,6 +145,34 @@ public class CatalogLoadingTests
         Assert.StartsWith("sha256:", checksum);
     }
 
+    [Fact]
+    public void RegisteredSourceAutoSyncsOnFirstUse()
+    {
+        using var temp = new TempDir();
+
+        // A local git repo acts as the org catalog.
+        var catalogRepo = Path.Combine(temp.Path, "org-catalog");
+        WriteMinimalCatalog(catalogRepo);
+        WriteAsset(catalogRepo, "skills", "org-skill", "name: Org Skill\nversion: 1.0.0\n");
+        Run("git", "init -q -b main", catalogRepo);
+        Run("git", "add -A", catalogRepo);
+        Run("git", "-c user.email=t@t -c user.name=t commit -q -m init", catalogRepo);
+
+        // A consuming repo with no catalog.yaml and no prior 'source sync'.
+        var paths = TestData.Paths(temp, "consumer");
+        var sources = new SourceManager(paths);
+        sources.AddSource("org", catalogRepo);
+
+        var loaded = new CatalogLayerLoader(sources, paths).Load();
+        Assert.Contains(loaded.Catalog.Assets, x => x.Id == "org-skill");
+    }
+
+    private static void Run(string file, string args, string cwd)
+    {
+        var result = AgentPack.Core.ProcessRunner.Run(file, args, cwd);
+        Assert.Equal(0, result.ExitCode);
+    }
+
     private static void WriteMinimalCatalog(string root)
     {
         Directory.CreateDirectory(root);

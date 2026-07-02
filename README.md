@@ -43,12 +43,16 @@ Everything works on all four providers unless the product itself has no such con
 # 1. Install the CLI — --add-source is your company's NuGet feed (where the tool package lives)
 dotnet tool install -g AgentPack --add-source https://nuget.your-org.com/v3/index.json
 
-# 2. Connect your company's asset catalog — a git repo with the approved skills/hooks/mcp
+# 2. Point it at your company's asset catalog — the git repo with the approved skills/hooks/mcp
 agentpack source add org https://github.com/your-org/ai-catalog.git
-agentpack source sync
 ```
 
-Two different "sources", two different things: the **NuGet feed** delivers the `agentpack` tool itself; the **catalog source** is the git repo the tool installs assets from. Working inside the catalog repo itself? Skip step 2 — it's picked up automatically.
+That's all — the catalog syncs automatically on first use. Two different "sources", two different things: the **NuGet feed** delivers the `agentpack` tool itself; the **catalog source** is the git repo the tool installs assets from.
+
+Even step 2 is skippable:
+
+- **Inside the catalog repo** (like this one — `catalog.yaml` + `assets/` live here): nothing to configure, it's picked up automatically.
+- **Org-wide default:** set `AGENTPACK_CATALOG_URL=https://github.com/your-org/ai-catalog.git` in your machine-setup / shell profile and agentpack registers and syncs it by itself.
 
 Works on Windows (PowerShell), macOS, and Linux.
 

@@ -39,6 +39,8 @@ Everything works on all four providers unless the product itself has no such con
 
 ## Setup (once)
 
+### Install the released CLI
+
 ```bash
 # 1. Install the CLI — --add-source is your company's NuGet feed (where the tool package lives)
 dotnet tool install -g AgentPack --add-source https://nuget.your-org.com/v3/index.json
@@ -55,6 +57,32 @@ Even step 2 is skippable:
 - **Org-wide default:** set `AGENTPACK_CATALOG_URL=https://github.com/your-org/ai-catalog.git` in your machine-setup / shell profile and agentpack registers and syncs it by itself.
 
 Works on Windows (PowerShell), macOS, and Linux.
+
+### Develop the CLI from this GitHub repo
+
+Use the NuGet feed when you want the released `agentpack` command. Use the GitHub repo when you are changing the CLI itself. A repo checkout is not a NuGet feed, so either run from source or pack a local tool package first:
+
+```bash
+git clone https://github.com/your-org/agentpack.git
+cd agentpack
+
+# Fastest while iterating: run the CLI directly from source
+dotnet run --project src/AgentPack.Cli -- list
+dotnet run --project src/AgentPack.Cli -- add grill-me
+
+# Optional: install this checkout as your global `agentpack` command
+dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=0.2.0-dev.1
+dotnet tool uninstall -g AgentPack
+dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 0.2.0-dev.1
+```
+
+If `dotnet tool uninstall` says the tool is not installed, continue with the install step. When you want to reinstall a newer local build, pack it with a new dev version such as `0.2.0-dev.2`, then run:
+
+```bash
+dotnet tool update -g AgentPack --add-source ./artifacts/packages --version 0.2.0-dev.2 --allow-downgrade
+```
+
+Running the CLI from this repo only changes where the `agentpack` command comes from. The asset catalog is still the repo with `catalog.yaml` and `assets/`; if you run inside that catalog repo, agentpack auto-detects it.
 
 ## Use it
 
@@ -167,4 +195,4 @@ dotnet build     # warnings are errors
 dotnet test      # 112 tests: provider golden files, merge formats, CLI end-to-end
 ```
 
-Docs: [how it works](docs/how-it-works.md) · [provider mapping](docs/provider-mapping.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md) · [breaking changes](docs/breaking-changes.md)
+Docs: [how it works](docs/how-it-works.md) · [provider mapping](docs/provider-mapping.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md)

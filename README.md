@@ -42,14 +42,30 @@ Everything works on all four providers unless the product itself has no such con
 ### Install the released CLI
 
 ```bash
-# 1. Install the CLI — --add-source is your company's NuGet feed (where the tool package lives)
-dotnet tool install -g AgentPack --add-source https://nuget.your-org.com/v3/index.json
+# 1. Install the CLI from nuget.org (requires the .NET SDK)
+dotnet tool install -g AgentPack
 
 # 2. Point it at your company's asset catalog — the git repo with the approved skills/hooks/mcp
 agentpack source add org https://github.com/your-org/ai-catalog.git
 ```
 
+Update later with `dotnet tool update -g AgentPack`. If your organization mirrors the tool on an internal feed instead, add `--add-source https://nuget.your-org.com/v3/index.json` to both commands.
+
 That's all — the catalog syncs automatically on first use. Two different "sources", two different things: the **NuGet feed** delivers the `agentpack` tool itself; the **catalog source** is the git repo the tool installs assets from.
+
+### Or download a standalone binary (no .NET required)
+
+Each tagged release attaches self-contained executables to the [GitHub Releases page](https://github.com/svennijhuis/AgentPack/releases) — no .NET SDK or runtime needed:
+
+```bash
+# macOS (Apple Silicon) / Linux: download, extract, put on PATH
+tar -xzf agentpack-<version>-osx-arm64.tar.gz
+sudo mv agentpack /usr/local/bin/
+
+# Windows: unzip agentpack-<version>-win-x64.zip and add the folder to PATH
+```
+
+Available for `win-x64`, `win-arm64`, `linux-x64`, `linux-arm64`, `osx-x64`, and `osx-arm64`.
 
 Even step 2 is skippable:
 

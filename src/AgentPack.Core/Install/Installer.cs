@@ -65,6 +65,7 @@ public sealed class Installer
         Func<InstallPlanItem, DriftAction> onDrift)
     {
         var lockPath = _paths.GetLockPath(scope);
+        using var scopeLock = ScopeLock.Acquire(Path.GetDirectoryName(lockPath)!);
         var lockFile = JsonStore.Load<AgentPackLock>(lockPath);
         var root = ScopeRoot(scope);
         var results = new List<ApplyResult>();
@@ -89,8 +90,24 @@ public sealed class Installer
                 continue;
             }
 
-            var sourcePath = ResolveApplySource(loaded, item);
-            var installedChecksum = ApplyItem(item, sourcePath, root, scope);
+            string sourcePath;
+            string installedChecksum;
+            try
+            {
+                sourcePath = ResolveApplySource(loaded, item);
+                installedChecksum = ApplyItem(item, sourcePath, root, scope);
+            }
+            catch (Exception ex)
+            {
+                // Persist the entries for items that did apply, so the lockfile
+                // matches what is on disk before the failure surfaces.
+                JsonStore.Save(lockPath, lockFile);
+                if (ex is AgentPackException) throw;
+                throw new AgentPackException(
+                    $"Applying '{item.Asset.Id}' ({item.Provider}) failed: {ex.Message}",
+                    "Items applied before the failure are recorded in the lockfile; fix the cause and rerun.",
+                    ExitCodes.Internal);
+            }
 
             lockFile.Entries.RemoveAll(x =>
                 x.Id.Equals(item.Asset.Id, StringComparison.OrdinalIgnoreCase) &&
@@ -121,6 +138,7 @@ public sealed class Installer
     public List<LockEntry> Remove(AssetKind? kind, IReadOnlyList<string> ids, IReadOnlyList<ProviderName>? providers, InstallScope scope)
     {
         var lockPath = _paths.GetLockPath(scope);
+        using var scopeLock = ScopeLock.Acquire(Path.GetDirectoryName(lockPath)!);
         var lockFile = JsonStore.Load<AgentPackLock>(lockPath);
         var root = ScopeRoot(scope);
 
@@ -191,6 +209,7 @@ public sealed class Installer
     public void SetPinned(string id, bool pinned, InstallScope scope)
     {
         var lockPath = _paths.GetLockPath(scope);
+        using var scopeLock = ScopeLock.Acquire(Path.GetDirectoryName(lockPath)!);
         var lockFile = JsonStore.Load<AgentPackLock>(lockPath);
         var entries = lockFile.Entries.Where(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).ToList();
         if (entries.Count == 0)
@@ -314,9 +333,18 @@ public sealed class Installer
         if (scope == InstallScope.User) return;
         var directory = Path.Combine(_paths.WorkingDirectory, ".agentpack");
         var gitIgnore = Path.Combine(directory, ".gitignore");
-        if (File.Exists(gitIgnore)) return;
         Directory.CreateDirectory(directory);
-        File.WriteAllText(gitIgnore, "backups/\n");
+        if (!File.Exists(gitIgnore))
+        {
+            File.WriteAllText(gitIgnore, "backups/\n.lock\n");
+            return;
+        }
+
+        var lines = File.ReadAllLines(gitIgnore);
+        if (!lines.Contains(".lock"))
+        {
+            File.AppendAllText(gitIgnore, ".lock\n");
+        }
     }
 
     private static void DeleteExisting(string path)

@@ -187,7 +187,7 @@ public class CliEndToEndTests
 
     private static (int ExitCode, string Output, string Error) RunCli(TempDir temp, params string[] args)
     {
-        var cliDll = Path.Combine(AppContext.BaseDirectory, "AgentPack.Cli.dll");
+        var cliDll = Path.Combine(AppContext.BaseDirectory, "agentpack.dll");
         Assert.True(File.Exists(cliDll), $"CLI binary not found at {cliDll}");
 
         Directory.CreateDirectory(WorkDir(temp));

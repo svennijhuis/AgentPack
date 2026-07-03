@@ -9,6 +9,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>agentpack</AssemblyName>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>agentpack</ToolCommandName>
     <PackageId>AgentPack</PackageId>
@@ -16,6 +17,10 @@
     <Authors>AgentPack</Authors>
     <Description>Organization AI asset package manager for skills, hooks, MCP, tools, instructions, rules, prompts, bundles, and profiles.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/svennijhuis/AgentPack</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/svennijhuis/AgentPack</RepositoryUrl>
+    <PackageTags>ai;agents;skills;mcp;claude;copilot;cursor;codex;cli;dotnet-tool</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

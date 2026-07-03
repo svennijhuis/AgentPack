@@ -25,9 +25,26 @@ public static class JsonStore
         }
     }
 
+    /// <summary>
+    /// Writes to a temp file in the target directory and renames it into place,
+    /// so a crash or full disk mid-write can never leave a truncated file behind.
+    /// </summary>
     public static void Save<T>(string path, T value)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        File.WriteAllText(path, JsonSerializer.Serialize(value, Options));
+        var fullPath = Path.GetFullPath(path);
+        var directory = Path.GetDirectoryName(fullPath)!;
+        Directory.CreateDirectory(directory);
+
+        var tempPath = Path.Combine(directory, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(value, Options));
+            File.Move(tempPath, fullPath, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+            throw;
+        }
     }
 }

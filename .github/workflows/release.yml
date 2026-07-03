@@ -29,17 +29,40 @@ jobs:
           --output ./artifacts
           -p:Version=${{ env.VERSION }}
 
-      # Point this at your organization's internal NuGet feed and add the
-      # NUGET_API_KEY secret before the first release.
-      - name: Push to feed
-        if: ${{ vars.NUGET_FEED_URL != '' }}
+      # Publishes to nuget.org so `dotnet tool install -g AgentPack` works without
+      # --add-source. Create an API key at https://www.nuget.org/account/apikeys
+      # and add it as the NUGET_API_KEY repository secret. Skipped if unset.
+      # Override NUGET_FEED_URL (repository variable) to push to a different feed.
+      - name: Push to NuGet
+        if: ${{ secrets.NUGET_API_KEY != '' }}
         run: >
           dotnet nuget push artifacts/*.nupkg
-          --source "${{ vars.NUGET_FEED_URL }}"
+          --source "${{ vars.NUGET_FEED_URL || 'https://api.nuget.org/v3/index.json' }}"
           --api-key "${{ secrets.NUGET_API_KEY }}"
+
+      - name: Publish self-contained binaries
+        run: |
+          for rid in win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64; do
+            dotnet publish src/AgentPack.Cli/AgentPack.Cli.csproj \
+              --configuration Release \
+              --runtime "$rid" \
+              --self-contained true \
+              -p:Version=${{ env.VERSION }} \
+              -p:PublishSingleFile=true \
+              -p:EnableCompressionInSingleFile=true \
+              -p:DebugType=none \
+              --output "./publish/$rid"
+            if [[ "$rid" == win-* ]]; then
+              (cd "./publish/$rid" && zip -r "../../artifacts/agentpack-${VERSION}-${rid}.zip" .)
+            else
+              tar -czf "./artifacts/agentpack-${VERSION}-${rid}.tar.gz" -C "./publish/$rid" .
+            fi
+          done
 
       - name: GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.nupkg
+          files: |
+            artifacts/*.nupkg
+            artifacts/agentpack-*
           generate_release_notes: true

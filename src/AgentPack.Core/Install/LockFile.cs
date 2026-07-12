@@ -22,5 +22,14 @@ public sealed class LockEntry
     public InstallMode InstallMode { get; set; } = InstallMode.CopyTree;
     public string SourceChecksum { get; set; } = "";
     public string InstalledChecksum { get; set; } = "";
+
+    /// <summary>
+    /// For merge-mode installs: the exact fragment written into the shared provider
+    /// config. Drift detection and removal work on this fragment, so other entries
+    /// merged into the same file never register as local changes. Null for copy-tree
+    /// installs and for entries written by agentpack &lt; 0.3.
+    /// </summary>
+    public string? Fragment { get; set; }
+
     public bool Pinned { get; set; }
 }

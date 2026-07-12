@@ -16,19 +16,84 @@ public static class McpMerger
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly Regex BareTomlKey = new("^[A-Za-z0-9_-]+$", RegexOptions.Compiled);
 
-    public static string Apply(Asset asset, string? sourcePath, InstallTarget target, string targetPath, InstallScope scope, Action<string> backupIfExists)
+    /// <summary>
+    /// Merges the asset's servers into the provider config. <paramref name="previousFragment"/>
+    /// is the fragment recorded at the last install (so upgrades replace our old entry), and
+    /// <paramref name="overwriteModified"/> is the user's drift decision for entries that were
+    /// edited after install. Anything else that already exists with different content is a conflict.
+    /// </summary>
+    public static MergeResult Apply(Asset asset, string? sourcePath, InstallTarget target, string targetPath, InstallScope scope,
+        Action<string> backupIfExists, string? previousFragment = null, bool overwriteModified = false)
     {
         var servers = BuildServers(asset, sourcePath, target.Provider, scope);
+        string fragment;
         if (target.Provider == ProviderName.Codex)
         {
-            MergeCodexToml(targetPath, servers, backupIfExists);
+            fragment = TomlFragment(servers);
+            MergeCodexToml(targetPath, servers, previousFragment, overwriteModified, backupIfExists);
         }
         else
         {
-            MergeJson(targetPath, RootKey(target.Provider, scope), servers, backupIfExists);
+            fragment = servers.ToJsonString();
+            MergeJson(targetPath, RootKey(target.Provider, scope), servers, previousFragment, overwriteModified, backupIfExists);
         }
 
-        return ContentHash.Compute(targetPath);
+        return new MergeResult(ContentHash.OfText(fragment), fragment);
+    }
+
+    /// <summary>Is the fragment we installed still in the config file, and unchanged?</summary>
+    public static FragmentState CheckFragment(string targetPath, ProviderName provider, InstallScope scope, string fragment)
+    {
+        if (!File.Exists(targetPath)) return FragmentState.Absent;
+        if (provider == ProviderName.Codex) return CheckToml(targetPath, fragment);
+
+        JsonObject root;
+        try
+        {
+            root = UserConfigJson.LoadObject(targetPath);
+        }
+        catch (AgentPackException)
+        {
+            return FragmentState.Modified;
+        }
+
+        var servers = root[RootKey(provider, scope)] as JsonObject;
+        var states = UserConfigJson.ParseFragment(fragment)
+            .Select(pair => servers?[pair.Key] is not JsonNode existing
+                ? FragmentState.Absent
+                : JsonNode.DeepEquals(existing, pair.Value) ? FragmentState.Present : FragmentState.Modified)
+            .ToList();
+
+        if (states.Count == 0 || states.All(x => x == FragmentState.Absent)) return FragmentState.Absent;
+        return states.All(x => x == FragmentState.Present) ? FragmentState.Present : FragmentState.Modified;
+    }
+
+    /// <summary>Removes our servers from the config file (used by 'agentpack remove').</summary>
+    public static void RemoveFragment(string targetPath, ProviderName provider, InstallScope scope, string fragment, Action<string> backupIfExists)
+    {
+        if (!File.Exists(targetPath)) return;
+        if (provider == ProviderName.Codex)
+        {
+            RemoveToml(targetPath, fragment, backupIfExists);
+            return;
+        }
+
+        var root = UserConfigJson.LoadObject(targetPath);
+        if (root[RootKey(provider, scope)] is not JsonObject servers) return;
+
+        var changed = false;
+        foreach (var serverId in UserConfigJson.ParseFragment(fragment).Select(x => x.Key).ToList())
+        {
+            if (servers.ContainsKey(serverId))
+            {
+                servers.Remove(serverId);
+                changed = true;
+            }
+        }
+
+        if (!changed) return;
+        backupIfExists(targetPath);
+        AtomicWrite.Text(targetPath, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
     /// <summary>The exact fragment that will be merged — used for previews before applying.</summary>
@@ -174,11 +239,11 @@ public static class McpMerger
         return server;
     }
 
-    private static void MergeJson(string path, string rootKey, JsonObject incomingServers, Action<string> backupIfExists)
+    private static void MergeJson(string path, string rootKey, JsonObject incomingServers,
+        string? previousFragment, bool overwriteModified, Action<string> backupIfExists)
     {
-        var root = File.Exists(path)
-            ? JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject()
-            : new JsonObject();
+        var root = UserConfigJson.LoadObject(path);
+        var previousServers = previousFragment is null ? null : UserConfigJson.ParseFragment(previousFragment);
 
         if (root[rootKey] is not JsonObject existingServers)
         {
@@ -192,15 +257,18 @@ public static class McpMerger
             if (incoming is null) continue;
             if (existingServers[serverId] is JsonNode existing)
             {
-                if (!JsonNode.DeepEquals(existing, incoming))
+                if (JsonNode.DeepEquals(existing, incoming)) continue;
+
+                // Our previous install (or a drift decision to overwrite) may be replaced;
+                // anything else in the user's file is theirs and stays a conflict.
+                var isOurs = previousServers?[serverId] is JsonNode previous && JsonNode.DeepEquals(existing, previous);
+                if (!isOurs && !overwriteModified)
                 {
                     throw new AgentPackException(
                         $"MCP server '{serverId}' already exists in {path} with a different configuration.",
                         "Remove or rename the existing entry, then rerun the install.",
                         ExitCodes.DriftOrConflict);
                 }
-
-                continue;
             }
 
             existingServers[serverId] = Clone(incoming);
@@ -212,20 +280,25 @@ public static class McpMerger
         AtomicWrite.Text(path, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
-    private static void MergeCodexToml(string path, JsonObject incomingServers, Action<string> backupIfExists)
+    private static void MergeCodexToml(string path, JsonObject incomingServers,
+        string? previousFragment, bool overwriteModified, Action<string> backupIfExists)
     {
         var text = File.Exists(path) ? File.ReadAllText(path) : "";
-        var builder = new StringBuilder(text.TrimEnd());
         var changed = false;
 
         foreach (var (serverId, serverNode) in incomingServers)
         {
             if (serverNode is not JsonObject server) continue;
             var block = BuildCodexTomlBlock(serverId, server);
-            var existing = FindTomlSection(text, TomlHeader(serverId));
+            var header = TomlHeader(serverId);
+            var existing = FindTomlSection(text, header);
             if (existing is not null)
             {
-                if (!NormalizeToml(existing).Equals(NormalizeToml(block), StringComparison.Ordinal))
+                if (NormalizeToml(existing).Equals(NormalizeToml(block), StringComparison.Ordinal)) continue;
+
+                var previous = previousFragment is null ? null : FindTomlSection(previousFragment, header);
+                var isOurs = previous is not null && NormalizeToml(existing).Equals(NormalizeToml(previous), StringComparison.Ordinal);
+                if (!isOurs && !overwriteModified)
                 {
                     throw new AgentPackException(
                         $"MCP server '{serverId}' already exists in {path} with a different configuration.",
@@ -233,17 +306,97 @@ public static class McpMerger
                         ExitCodes.DriftOrConflict);
                 }
 
-                continue;
+                text = RemoveTomlSection(text, header);
             }
 
+            var builder = new StringBuilder(text.TrimEnd());
             if (builder.Length > 0) builder.AppendLine().AppendLine();
             builder.Append(block.TrimEnd());
+            text = builder.ToString();
             changed = true;
         }
 
         if (!changed && File.Exists(path)) return;
         BackupIfExists(path, backupIfExists);
-        AtomicWrite.Text(path, builder.ToString().TrimEnd() + Environment.NewLine);
+        AtomicWrite.Text(path, text.TrimEnd() + Environment.NewLine);
+    }
+
+    private static FragmentState CheckToml(string path, string fragment)
+    {
+        var text = File.ReadAllText(path);
+        var states = new List<FragmentState>();
+        foreach (var (header, block) in EnumerateTomlBlocks(fragment))
+        {
+            var existing = FindTomlSection(text, header);
+            states.Add(existing is null
+                ? FragmentState.Absent
+                : NormalizeToml(existing).Equals(NormalizeToml(block), StringComparison.Ordinal) ? FragmentState.Present : FragmentState.Modified);
+        }
+
+        if (states.Count == 0 || states.All(x => x == FragmentState.Absent)) return FragmentState.Absent;
+        return states.All(x => x == FragmentState.Present) ? FragmentState.Present : FragmentState.Modified;
+    }
+
+    private static void RemoveToml(string path, string fragment, Action<string> backupIfExists)
+    {
+        var text = File.ReadAllText(path);
+        var changed = false;
+        foreach (var (header, _) in EnumerateTomlBlocks(fragment))
+        {
+            if (FindTomlSection(text, header) is null) continue;
+            text = RemoveTomlSection(text, header);
+            changed = true;
+        }
+
+        if (!changed) return;
+        backupIfExists(path);
+        AtomicWrite.Text(path, text.TrimEnd() + Environment.NewLine);
+    }
+
+    private static string TomlFragment(JsonObject servers)
+    {
+        var builder = new StringBuilder();
+        foreach (var (serverId, serverNode) in servers)
+        {
+            if (serverNode is not JsonObject server) continue;
+            if (builder.Length > 0) builder.AppendLine();
+            builder.AppendLine(BuildCodexTomlBlock(serverId, server).TrimEnd());
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    /// <summary>Splits a stored TOML fragment back into its per-server sections.</summary>
+    private static IEnumerable<(string Header, string Block)> EnumerateTomlBlocks(string fragment)
+    {
+        var lines = fragment.Replace("\r\n", "\n").Split('\n');
+        var headers = lines.Select(x => x.Trim()).Where(x => x.StartsWith("[mcp_servers.", StringComparison.Ordinal)).ToList();
+        foreach (var header in headers)
+        {
+            var block = FindTomlSection(fragment, header);
+            if (block is not null) yield return (header, block);
+        }
+    }
+
+    private static string RemoveTomlSection(string text, string header)
+    {
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var lines = text.Replace("\r\n", "\n").Split('\n').ToList();
+        var startLine = lines.FindIndex(x => x.Trim().Equals(header, StringComparison.Ordinal));
+        if (startLine < 0) return text;
+
+        var endLine = lines.Count;
+        for (var i = startLine + 1; i < lines.Count; i++)
+        {
+            if (lines[i].TrimStart().StartsWith('['))
+            {
+                endLine = i;
+                break;
+            }
+        }
+
+        lines.RemoveRange(startLine, endLine - startLine);
+        return string.Join(newline, lines).Trim() is { Length: > 0 } remaining ? remaining + newline : "";
     }
 
     private static string BuildCodexTomlBlock(string serverId, JsonObject server)
@@ -405,12 +558,15 @@ public static class McpMerger
 
 public static class AtomicWrite
 {
+    // BOM-less UTF-8: strict JSON parsers reject a leading BOM.
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     public static void Text(string path, string contents)
     {
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         var tempPath = fullPath + ".tmp-" + Guid.NewGuid().ToString("N");
-        File.WriteAllText(tempPath, contents, Encoding.UTF8);
+        File.WriteAllText(tempPath, contents, Utf8NoBom);
         File.Move(tempPath, fullPath, overwrite: true);
     }
 }

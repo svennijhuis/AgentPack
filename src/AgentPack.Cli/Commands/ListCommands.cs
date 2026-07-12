@@ -137,9 +137,12 @@ public sealed class DiffCommand : Command<DiffCommand.Settings>
                 var exists = File.Exists(installedPath) || Directory.Exists(installedPath);
                 var state = !exists
                     ? "missing"
-                    : ContentHash.Compute(installedPath).Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase)
-                        ? "clean"
-                        : "modified locally";
+                    : Installer.InstalledFragmentState(entry, installedPath, scope) switch
+                    {
+                        FragmentState.Present => "clean",
+                        FragmentState.Absent => "missing",
+                        _ => "modified locally"
+                    };
                 return new[] { entry.Id, entry.Provider.Display(), entry.Path, state };
             }));
         return 0;

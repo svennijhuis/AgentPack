@@ -27,7 +27,7 @@ public sealed class CliSession
 
     public static bool IsGitRepo(string root) =>
         Directory.Exists(Path.Combine(root, ".git")) ||
-        ProcessRunner.Run("git", "rev-parse --is-inside-work-tree", root).ExitCode == 0;
+        ProcessRunner.Run("git", ["rev-parse", "--is-inside-work-tree"], root).ExitCode == 0;
 }
 
 /// <summary>Options shared by every command that installs, removes, or inspects installs.</summary>
@@ -289,8 +289,11 @@ public static class CommandHelpers
         if (settings.KeepLocal) return DriftAction.Keep;
         if (!Output.CanPrompt || settings.Yes)
         {
+            var reason = item.State == InstallState.UnmanagedPresent
+                ? "the target already exists and was not installed by agentpack — keeping it"
+                : "has local changes — keeping them";
             Output.Warning(
-                $"{item.Asset.Id} ({item.Provider.Display()}) has local changes — keeping them. " +
+                $"{item.Asset.Id} ({item.Provider.Display()}): {reason}. " +
                 "Use --force to overwrite or --keep-local to silence this warning.");
             return DriftAction.Keep;
         }

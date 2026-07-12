@@ -39,19 +39,21 @@ public sealed class ExternalResolver
         var resolved = ExternalSourceParser.Resolve(source);
         var finalPath = CachedContentPath(resolved);
 
+        var repo = ProcessRunner.SafeGitArg(resolved.Repo, "repository URL");
+        var reference = ProcessRunner.SafeGitArg(resolved.Ref, "git ref");
         var repoCache = Path.Combine(_paths.ExternalCacheRoot, CacheKey(resolved), "repo");
         Directory.CreateDirectory(Path.GetDirectoryName(repoCache)!);
         if (!Directory.Exists(Path.Combine(repoCache, ".git")))
         {
-            Ensure(ProcessRunner.Run("git", $"clone {Escape(resolved.Repo)} {Escape(repoCache)}", _paths.WorkingDirectory),
+            Ensure(ProcessRunner.Run("git", ["clone", "--", repo, repoCache], _paths.WorkingDirectory),
                 asset, $"clone {resolved.Repo}");
         }
         else
         {
-            Ensure(ProcessRunner.Run("git", "fetch --all --tags --prune", repoCache), asset, "fetch");
+            Ensure(ProcessRunner.Run("git", ["fetch", "--all", "--tags", "--prune"], repoCache), asset, "fetch");
         }
 
-        Ensure(ProcessRunner.Run("git", $"checkout --force {Escape(resolved.Ref)}", repoCache), asset, $"checkout ref '{resolved.Ref}'");
+        Ensure(ProcessRunner.Run("git", ["checkout", "--force", reference, "--"], repoCache), asset, $"checkout ref '{resolved.Ref}'");
 
         var sourcePath = Path.GetFullPath(Path.Combine(repoCache, resolved.Path));
         if (!File.Exists(sourcePath) && !Directory.Exists(sourcePath))
@@ -128,8 +130,6 @@ public sealed class ExternalResolver
 
     private static string FirstLine(string text) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
-
-    private static string Escape(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
 }
 
 /// <summary>Resolves any asset's content to a local path (catalog folder or external cache).</summary>

@@ -32,7 +32,7 @@ app.Configure(config =>
 
     config.AddCommand<RemoveCommand>("remove")
         .WithAlias("uninstall")
-        .WithDescription("Remove installed assets (shared provider configs keep user entries).");
+        .WithDescription("Remove installed assets, including their entries in shared provider configs.");
 
     config.AddCommand<UpgradeCommand>("upgrade")
         .WithAlias("update")

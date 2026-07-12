@@ -117,74 +117,74 @@ public sealed class CatalogValidator
         switch (asset.Source)
         {
             case AssetSource.Local local:
-            {
-                var fullPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
-                if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
                 {
-                    report.Error("asset.local.missing", $"Asset '{asset.Id}' local content does not exist: {local.RelativePath}.");
-                    return;
-                }
-
-                var expected = loaded.EffectiveChecksum(asset);
-                if (expected is null)
-                {
-                    report.Warning("asset.checksum.missing",
-                        $"Asset '{asset.Id}' has no checksum in the manifest or catalog.lock.yaml. Run 'agentpack catalog lock'.");
-                }
-                else if (!expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
-                {
-                    report.Error("asset.checksum.invalid", $"Asset '{asset.Id}' checksum must start with sha256:.");
-                }
-                else if (verifyChecksums)
-                {
-                    var actual = ContentHash.Compute(fullPath);
-                    if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                    var fullPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
+                    if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
                     {
-                        report.Error("asset.checksum.mismatch",
-                            $"Asset '{asset.Id}' checksum mismatch: expected {expected}, got {actual}. " +
-                            "Rerun 'agentpack catalog lock' after content changes.");
+                        report.Error("asset.local.missing", $"Asset '{asset.Id}' local content does not exist: {local.RelativePath}.");
+                        return;
                     }
-                }
 
-                break;
-            }
+                    var expected = loaded.EffectiveChecksum(asset);
+                    if (expected is null)
+                    {
+                        report.Warning("asset.checksum.missing",
+                            $"Asset '{asset.Id}' has no checksum in the manifest or catalog.lock.yaml. Run 'agentpack catalog lock'.");
+                    }
+                    else if (!expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        report.Error("asset.checksum.invalid", $"Asset '{asset.Id}' checksum must start with sha256:.");
+                    }
+                    else if (verifyChecksums)
+                    {
+                        var actual = ContentHash.Compute(fullPath);
+                        if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+                        {
+                            report.Error("asset.checksum.mismatch",
+                                $"Asset '{asset.Id}' checksum mismatch: expected {expected}, got {actual}. " +
+                                "Rerun 'agentpack catalog lock' after content changes.");
+                        }
+                    }
+
+                    break;
+                }
 
             case AssetSource.External external:
-            {
-                ResolvedExternalSource resolved;
-                try
                 {
-                    resolved = ExternalSourceParser.Resolve(external);
-                }
-                catch (AgentPackException ex)
-                {
-                    report.Error("asset.external.source.invalid", $"External asset '{asset.Id}' has an invalid source: {ex.Message}");
-                    return;
-                }
+                    ResolvedExternalSource resolved;
+                    try
+                    {
+                        resolved = ExternalSourceParser.Resolve(external);
+                    }
+                    catch (AgentPackException ex)
+                    {
+                        report.Error("asset.external.source.invalid", $"External asset '{asset.Id}' has an invalid source: {ex.Message}");
+                        return;
+                    }
 
-                if (!IsPinnedExternalRef(resolved.Ref))
-                {
-                    report.Error("asset.external.ref.moving",
-                        $"External asset '{asset.Id}' must pin ref to a commit SHA or immutable tag, not '{resolved.Ref}'.");
-                }
-                else if (!IsFullCommitSha(resolved.Ref))
-                {
-                    report.Warning("asset.external.ref.tag", $"External asset '{asset.Id}' uses a tag. CI must verify the tag has not moved.");
-                }
+                    if (!IsPinnedExternalRef(resolved.Ref))
+                    {
+                        report.Error("asset.external.ref.moving",
+                            $"External asset '{asset.Id}' must pin ref to a commit SHA or immutable tag, not '{resolved.Ref}'.");
+                    }
+                    else if (!IsFullCommitSha(resolved.Ref))
+                    {
+                        report.Warning("asset.external.ref.tag", $"External asset '{asset.Id}' uses a tag. CI must verify the tag has not moved.");
+                    }
 
-                if (external.License is null)
-                {
-                    report.Warning("asset.external.license.missing", $"External asset '{asset.Id}' does not record its upstream license.");
-                }
+                    if (external.License is null)
+                    {
+                        report.Warning("asset.external.license.missing", $"External asset '{asset.Id}' does not record its upstream license.");
+                    }
 
-                var expected = loaded.EffectiveChecksum(asset);
-                if (expected is not null && !expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
-                {
-                    report.Error("asset.checksum.invalid", $"Asset '{asset.Id}' checksum must start with sha256:.");
-                }
+                    var expected = loaded.EffectiveChecksum(asset);
+                    if (expected is not null && !expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        report.Error("asset.checksum.invalid", $"Asset '{asset.Id}' checksum must start with sha256:.");
+                    }
 
-                break;
-            }
+                    break;
+                }
         }
     }
 

@@ -23,6 +23,7 @@ public sealed class CatalogLayerLoader
     {
         var issues = new List<CatalogIssue>();
         var basePath = _sources.ResolveCatalogPath(explicitCatalogPath);
+        if (_sources.RefreshIfStale(basePath) is { } staleWarning) issues.Add(staleWarning);
         var baseDto = CatalogLoader.LoadDto(basePath);
         var baseRoot = Path.GetDirectoryName(Path.GetFullPath(basePath))!;
         var roots = new List<string> { baseRoot };

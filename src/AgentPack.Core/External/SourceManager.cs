@@ -43,20 +43,62 @@ public sealed class SourceManager
 
     public string SourceCachePath(AgentPackSource source) => Path.Combine(_paths.CacheRoot, "sources", Sanitize(source.Name));
 
+    /// <summary>How old a synced catalog may get before commands try to refresh it.</summary>
+    public static readonly TimeSpan MaxCatalogAge = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// Re-syncs the source that <paramref name="catalogPath"/> came from when the local
+    /// clone is older than <see cref="MaxCatalogAge"/>. Never fails the command: offline
+    /// (or any sync error) falls back to the cached copy with a warning to show the user.
+    /// </summary>
+    public CatalogIssue? RefreshIfStale(string catalogPath)
+    {
+        var source = LoadConfig().Sources.FirstOrDefault(x =>
+            Path.GetFullPath(catalogPath).StartsWith(Path.GetFullPath(SourceCachePath(x)) + Path.DirectorySeparatorChar, StringComparison.Ordinal));
+        if (source is null) return null;
+
+        var marker = SyncMarkerPath(source);
+        var lastSync = File.Exists(marker) ? File.GetLastWriteTimeUtc(marker) : DateTime.MinValue;
+        if (DateTime.UtcNow - lastSync < MaxCatalogAge) return null;
+
+        try
+        {
+            Sync(source);
+            return null;
+        }
+        catch (AgentPackException ex)
+        {
+            var age = lastSync == DateTime.MinValue ? "an unknown time" : $"{(DateTime.UtcNow - lastSync).TotalDays:0.#} day(s)";
+            return new CatalogIssue(IssueSeverity.Warning, "catalog.stale",
+                $"Could not refresh catalog source '{source.Name}' ({FirstLine(ex.Message)}); using the cached copy from {age} ago.");
+        }
+    }
+
+    private void MarkSynced(AgentPackSource source)
+    {
+        File.WriteAllText(SyncMarkerPath(source), DateTimeOffset.UtcNow.ToString("O"));
+    }
+
+    private string SyncMarkerPath(AgentPackSource source) => SourceCachePath(source) + ".synced";
+
     public void Sync(AgentPackSource source)
     {
         var target = SourceCachePath(source);
+        var branch = ProcessRunner.SafeGitArg(source.Branch, "branch name");
+        var url = ProcessRunner.SafeGitArg(source.Url, "repository URL");
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         if (!Directory.Exists(Path.Combine(target, ".git")))
         {
-            Ensure(ProcessRunner.Run("git", $"clone --branch {Escape(source.Branch)} {Escape(source.Url)} {Escape(target)}", _paths.WorkingDirectory),
+            Ensure(ProcessRunner.Run("git", ["clone", "--branch", branch, "--", url, target], _paths.WorkingDirectory),
                 $"clone '{source.Name}' from {source.Url}");
+            MarkSynced(source);
             return;
         }
 
-        Ensure(ProcessRunner.Run("git", "fetch --all --prune", target), $"fetch '{source.Name}'");
-        Ensure(ProcessRunner.Run("git", $"checkout {Escape(source.Branch)}", target), $"checkout {source.Branch} for '{source.Name}'");
-        Ensure(ProcessRunner.Run("git", "pull --ff-only", target), $"pull '{source.Name}'");
+        Ensure(ProcessRunner.Run("git", ["fetch", "--all", "--prune"], target), $"fetch '{source.Name}'");
+        Ensure(ProcessRunner.Run("git", ["checkout", branch, "--"], target), $"checkout {source.Branch} for '{source.Name}'");
+        Ensure(ProcessRunner.Run("git", ["pull", "--ff-only"], target), $"pull '{source.Name}'");
+        MarkSynced(source);
     }
 
     /// <summary>
@@ -125,5 +167,4 @@ public sealed class SourceManager
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
 
     private static string Sanitize(string value) => string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
-    private static string Escape(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
 }

@@ -41,6 +41,17 @@ public static class McpMerger
         return new MergeResult(ContentHash.OfText(fragment), fragment);
     }
 
+    /// <summary>
+    /// The fragment that installing this asset would record, without writing anything.
+    /// Used to backfill lock entries written by agentpack &lt; 1.0, which tracked the
+    /// whole shared file instead of the fragment.
+    /// </summary>
+    public static string ComputeFragment(Asset asset, string? sourcePath, ProviderName provider, InstallScope scope)
+    {
+        var servers = BuildServers(asset, sourcePath, provider, scope);
+        return provider == ProviderName.Codex ? TomlFragment(servers) : servers.ToJsonString();
+    }
+
     /// <summary>Is the fragment we installed still in the config file, and unchanged?</summary>
     public static FragmentState CheckFragment(string targetPath, ProviderName provider, InstallScope scope, string fragment)
     {

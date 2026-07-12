@@ -88,6 +88,7 @@ public sealed class Installer
 
             if (item.State == InstallState.Installed)
             {
+                BackfillFragment(item, lockFile, root, scope);
                 results.Add(new ApplyResult(item, ApplyOutcome.AlreadyUpToDate));
                 continue;
             }
@@ -368,6 +369,42 @@ public sealed class Installer
         return !string.IsNullOrWhiteSpace(sourcePath) && (File.Exists(sourcePath) || Directory.Exists(sourcePath))
             ? ContentHash.Compute(sourcePath)
             : "";
+    }
+
+    /// <summary>
+    /// Lock entries written by agentpack &lt; 1.0 tracked the whole shared config file
+    /// instead of the fragment they merged in. When the recomputed fragment matches
+    /// what is in the file, record it so drift detection and removal work for this
+    /// entry too — the upgrade to 1.0 then needs no manual migration.
+    /// </summary>
+    private static void BackfillFragment(InstallPlanItem item, AgentPackLock lockFile, string root, InstallScope scope)
+    {
+        var entry = lockFile.Find(item.Asset.Id, item.Provider, item.Asset.Kind);
+        if (entry is null || entry.InstallMode == InstallMode.CopyTree || entry.Fragment is not null) return;
+
+        var installedPath = ResolveLockPath(entry.Path, root);
+        if (!File.Exists(installedPath)) return;
+
+        string fragment;
+        try
+        {
+            fragment = entry.InstallMode == InstallMode.MergeMcp
+                ? McpMerger.ComputeFragment(item.Asset, item.SourcePath, item.Provider, scope)
+                : HookMerger.ComputeFragment(item.Asset, item.Target, root, scope);
+        }
+        catch (AgentPackException)
+        {
+            // E.g. external content not in the cache yet; backfill retries on a later run.
+            return;
+        }
+
+        var state = entry.InstallMode == InstallMode.MergeMcp
+            ? McpMerger.CheckFragment(installedPath, entry.Provider, scope, fragment)
+            : HookMerger.CheckFragment(installedPath, entry.Provider, fragment);
+        if (state != FragmentState.Present) return;
+
+        entry.Fragment = fragment;
+        entry.InstalledChecksum = ContentHash.OfText(fragment);
     }
 
     private const int BackupsToKeep = 20;

@@ -3,6 +3,10 @@ namespace AgentPack.Core;
 public sealed class AgentPackConfig
 {
     public List<AgentPackSource> Sources { get; set; } = [];
+
+    /// <summary>Fields written by a newer agentpack survive a rewrite by this one.</summary>
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? ExtensionData { get; set; }
 }
 
 public sealed class AgentPackSource
@@ -10,6 +14,10 @@ public sealed class AgentPackSource
     public string Name { get; set; } = "";
     public string Url { get; set; } = "";
     public string Branch { get; set; } = "main";
+
+    /// <summary>Fields written by a newer agentpack survive a rewrite by this one.</summary>
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>Manages registered catalog source repos and their local clones.</summary>

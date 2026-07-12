@@ -76,6 +76,29 @@ public static class HookMerger
         return new MergeResult(ContentHash.OfText(fragment), fragment);
     }
 
+    /// <summary>
+    /// The fragment that installing this asset would record, without writing anything.
+    /// Requires the hook's support content to already be on disk (it identifies the
+    /// command script). Used to backfill lock entries written by agentpack &lt; 1.0.
+    /// </summary>
+    public static string ComputeFragment(Asset asset, InstallTarget target, string scopeRoot, InstallScope scope)
+    {
+        var supportPath = Path.GetFullPath(Path.Combine(scopeRoot, SupportRelativePath(target.Provider, asset.Id, scope)));
+        var commandPath = ResolveHookCommand(asset, supportPath);
+        var command = scope == InstallScope.User
+            ? commandPath
+            : "./" + Path.GetRelativePath(scopeRoot, commandPath).Replace(Path.DirectorySeparatorChar, '/');
+
+        return target.Provider switch
+        {
+            ProviderName.Claude or ProviderName.Codex =>
+                ClaudeStyleFragment(ClaudeStyleEvent(target.Provider, asset), Matcher(asset), ClaudeStyleHandler(asset, command)),
+            ProviderName.Cursor => CursorFragment(CursorEvent(asset), CursorEntry(asset, command)),
+            ProviderName.Copilot => CopilotHookDocument(asset, command, FindPowershellTwin(supportPath, command)).ToJsonString(),
+            _ => throw new AgentPackException($"{target.Provider.Display()} hook installation is not implemented.")
+        };
+    }
+
     /// <summary>Is the registration we installed still in the provider config, and unchanged?</summary>
     public static FragmentState CheckFragment(string targetPath, ProviderName provider, string fragment)
     {

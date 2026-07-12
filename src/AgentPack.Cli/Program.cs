@@ -8,6 +8,7 @@ var app = new CommandApp();
 app.Configure(config =>
 {
     config.SetApplicationName("agentpack");
+    config.SetApplicationVersion(VersionInfo.Current);
     config.PropagateExceptions();
 
     config.AddCommand<ListCommand>("list")

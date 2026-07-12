@@ -87,15 +87,15 @@ dotnet run --project src/AgentPack.Cli -- list
 dotnet run --project src/AgentPack.Cli -- add grill-me
 
 # Optional: install this checkout as your global `agentpack` command
-dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=0.2.0-dev.1
+dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=1.0.0-dev.1
 dotnet tool uninstall -g AgentPack
-dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 0.2.0-dev.1
+dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 1.0.0-dev.1
 ```
 
-If `dotnet tool uninstall` says the tool is not installed, continue with the install step. When you want to reinstall a newer local build, pack it with a new dev version such as `0.2.0-dev.2`, then run:
+If `dotnet tool uninstall` says the tool is not installed, continue with the install step. When you want to reinstall a newer local build, pack it with a new dev version such as `1.0.0-dev.2`, then run:
 
 ```bash
-dotnet tool update -g AgentPack --add-source ./artifacts/packages --version 0.2.0-dev.2 --allow-downgrade
+dotnet tool update -g AgentPack --add-source ./artifacts/packages --version 1.0.0-dev.2 --allow-downgrade
 ```
 
 Running the CLI from this repo only changes where the `agentpack` command comes from. The asset catalog is still the repo with `catalog.yaml` and `assets/`; if you run inside that catalog repo, agentpack auto-detects it.

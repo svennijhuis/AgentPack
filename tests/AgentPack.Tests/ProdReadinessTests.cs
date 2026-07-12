@@ -461,6 +461,78 @@ public class BackupPruningTests
     }
 }
 
+public class LockfileMigrationTests
+{
+    [Fact]
+    public void LegacyEntryGetsItsFragmentBackfilledOnTheNextApply()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var hook = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard", hook: new HookSpec { Command = "hook.sh" });
+        var mcp = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Mcp, "github",
+            mcp: new McpServer { Server = "github", Command = "github-mcp" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, hook, mcp);
+        var installer = new Installer(paths);
+        installer.Apply(installer.Plan(loaded, [hook, mcp], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+
+        // Simulate a lockfile written by agentpack < 1.0: no fragment, whole-file checksum.
+        var lockFile = JsonStore.Load<AgentPackLock>(paths.ProjectLockPath);
+        foreach (var entry in lockFile.Entries)
+        {
+            entry.Fragment = null;
+            entry.InstalledChecksum = ContentHash.Compute(
+                Installer.ResolveLockPath(entry.Path, paths.WorkingDirectory));
+        }
+
+        JsonStore.Save(paths.ProjectLockPath, lockFile);
+
+        var results = installer.Apply(installer.Plan(loaded, [hook, mcp], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+        Assert.All(results, r => Assert.Equal(ApplyOutcome.AlreadyUpToDate, r.Outcome));
+
+        var migrated = JsonStore.Load<AgentPackLock>(paths.ProjectLockPath);
+        Assert.All(migrated.Entries, entry => Assert.NotNull(entry.Fragment));
+
+        // After the backfill, removal un-merges correctly again.
+        installer.Remove(kind: null, ["guard"], providers: null, InstallScope.Project);
+        Assert.DoesNotContain("guard", File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".claude", "settings.json")));
+    }
+}
+
+public class LockfileForwardCompatTests
+{
+    [Fact]
+    public void UnknownFieldsSurviveALoadSaveRoundTrip()
+    {
+        using var temp = new TempDir();
+        var path = Path.Combine(temp.Path, "lock.json");
+        File.WriteAllText(path, """
+            {
+              "entries": [
+                {
+                  "id": "demo",
+                  "kind": "skills",
+                  "provider": "claude",
+                  "version": "1.0.0",
+                  "path": ".claude/skills/demo",
+                  "futureEntryField": { "nested": true }
+                }
+              ],
+              "futureTopLevelField": "keep me"
+            }
+            """);
+
+        var loaded = JsonStore.Load<AgentPackLock>(path);
+        JsonStore.Save(path, loaded);
+
+        var written = File.ReadAllText(path);
+        Assert.Contains("futureTopLevelField", written);
+        Assert.Contains("keep me", written);
+        Assert.Contains("futureEntryField", written);
+    }
+}
+
 public class CatalogStalenessTests
 {
     [Fact]

@@ -137,9 +137,12 @@ public sealed class DiffCommand : Command<DiffCommand.Settings>
                 var exists = File.Exists(installedPath) || Directory.Exists(installedPath);
                 var state = !exists
                     ? "missing"
-                    : ContentHash.Compute(installedPath).Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase)
-                        ? "clean"
-                        : "modified locally";
+                    : Installer.InstalledFragmentState(entry, installedPath, scope) switch
+                    {
+                        FragmentState.Present => "clean",
+                        FragmentState.Absent => "missing",
+                        _ => "modified locally"
+                    };
                 return new[] { entry.Id, entry.Provider.Display(), entry.Path, state };
             }));
         return 0;
@@ -156,7 +159,8 @@ public sealed class DoctorCommand : Command
             ["Check", "Value"],
             new[]
             {
-                new[] { "AgentPack home", session.Paths.Home },
+                new[] { "AgentPack version", VersionInfo.Current },
+                ["AgentPack home", session.Paths.Home],
                 ["Working directory", session.Paths.WorkingDirectory],
                 ["Git repository", CliSession.IsGitRepo(session.Paths.WorkingDirectory) ? "yes" : "no"],
                 ["Detected providers", detected.Count > 0 ? string.Join(", ", detected.Select(ProviderNames.Display)) : "(none)"],

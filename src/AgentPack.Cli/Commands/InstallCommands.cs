@@ -117,7 +117,7 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
         Output.Table(
             ["ID", "Kind", "Provider", "Version", "Path"],
             removed.Select(x => new[] { x.Id, x.Kind.Display(), x.Provider.Display(), x.Version, x.Path }));
-        Output.Info("Entries in shared provider configs (hooks/MCP) were deregistered from the lockfile; shared files were left untouched.");
+        Output.Info("Hook and MCP entries agentpack merged into shared provider configs were removed; the rest of those files was left untouched.");
         return 0;
     }
 }

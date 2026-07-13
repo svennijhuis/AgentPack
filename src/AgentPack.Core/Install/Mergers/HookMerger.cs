@@ -17,7 +17,15 @@ public static class HookMerger
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public static string Apply(Asset asset, string sourcePath, InstallTarget target, string targetPath, string scopeRoot, InstallScope scope, Action<string> backupIfExists)
+    /// <summary>
+    /// Installs the hook content and registers it in the provider config.
+    /// <paramref name="previousFragment"/> is the registration recorded at the last
+    /// install (so upgrades replace it instead of stacking duplicates), and
+    /// <paramref name="overwriteModified"/> is the user's drift decision for
+    /// registrations that were edited after install.
+    /// </summary>
+    public static MergeResult Apply(Asset asset, string sourcePath, InstallTarget target, string targetPath, string scopeRoot, InstallScope scope,
+        Action<string> backupIfExists, string? previousFragment = null, bool overwriteModified = false)
     {
         var supportPath = Path.GetFullPath(Path.Combine(scopeRoot, SupportRelativePath(target.Provider, asset.Id, scope)));
         CopyHookContent(sourcePath, supportPath, backupIfExists);
@@ -27,30 +35,127 @@ public static class HookMerger
             ? commandPath
             : "./" + Path.GetRelativePath(scopeRoot, commandPath).Replace(Path.DirectorySeparatorChar, '/');
 
+        string fragment;
         switch (target.Provider)
         {
             case ProviderName.Claude:
             case ProviderName.Codex:
-                MergeSharedConfig(targetPath, asset, backupIfExists,
-                    (hooks, changedAsset) => MergeClaudeStyleHook(hooks, changedAsset, command, ClaudeStyleEvent(target.Provider, asset)),
-                    setVersion: false);
-                break;
+                {
+                    var eventName = ClaudeStyleEvent(target.Provider, asset);
+                    var handler = ClaudeStyleHandler(asset, command);
+                    fragment = ClaudeStyleFragment(eventName, Matcher(asset), handler);
+                    MergeSharedConfig(targetPath, backupIfExists,
+                        hooks => MergeClaudeStyleHook(hooks, targetPath, Matcher(asset), handler, eventName, previousFragment, overwriteModified),
+                        setVersion: false);
+                    break;
+                }
 
             case ProviderName.Cursor:
-                MergeSharedConfig(targetPath, asset, backupIfExists,
-                    (hooks, changedAsset) => MergeCursorHook(hooks, changedAsset, command),
-                    setVersion: true);
-                break;
+                {
+                    var entry = CursorEntry(asset, command);
+                    fragment = CursorFragment(CursorEvent(asset), entry);
+                    MergeSharedConfig(targetPath, backupIfExists,
+                        hooks => MergeCursorHook(hooks, targetPath, CursorEvent(asset), entry, previousFragment, overwriteModified),
+                        setVersion: true);
+                    break;
+                }
 
             case ProviderName.Copilot:
-                WriteCopilotHookFile(targetPath, asset, command, supportPath, backupIfExists);
-                break;
+                {
+                    var powershell = FindPowershellTwin(supportPath, command);
+                    var document = CopilotHookDocument(asset, command, powershell);
+                    fragment = document.ToJsonString();
+                    WriteCopilotHookFile(targetPath, document, backupIfExists);
+                    break;
+                }
 
             default:
                 throw new AgentPackException($"{target.Provider.Display()} hook installation is not implemented.");
         }
 
-        return ContentHash.Compute(targetPath);
+        return new MergeResult(ContentHash.OfText(fragment), fragment);
+    }
+
+    /// <summary>
+    /// The fragment that installing this asset would record, without writing anything.
+    /// Requires the hook's support content to already be on disk (it identifies the
+    /// command script). Used to backfill lock entries written by agentpack &lt; 1.0.
+    /// </summary>
+    public static string ComputeFragment(Asset asset, InstallTarget target, string scopeRoot, InstallScope scope)
+    {
+        var supportPath = Path.GetFullPath(Path.Combine(scopeRoot, SupportRelativePath(target.Provider, asset.Id, scope)));
+        var commandPath = ResolveHookCommand(asset, supportPath);
+        var command = scope == InstallScope.User
+            ? commandPath
+            : "./" + Path.GetRelativePath(scopeRoot, commandPath).Replace(Path.DirectorySeparatorChar, '/');
+
+        return target.Provider switch
+        {
+            ProviderName.Claude or ProviderName.Codex =>
+                ClaudeStyleFragment(ClaudeStyleEvent(target.Provider, asset), Matcher(asset), ClaudeStyleHandler(asset, command)),
+            ProviderName.Cursor => CursorFragment(CursorEvent(asset), CursorEntry(asset, command)),
+            ProviderName.Copilot => CopilotHookDocument(asset, command, FindPowershellTwin(supportPath, command)).ToJsonString(),
+            _ => throw new AgentPackException($"{target.Provider.Display()} hook installation is not implemented.")
+        };
+    }
+
+    /// <summary>Is the registration we installed still in the provider config, and unchanged?</summary>
+    public static FragmentState CheckFragment(string targetPath, ProviderName provider, string fragment)
+    {
+        if (!File.Exists(targetPath)) return FragmentState.Absent;
+
+        JsonObject root;
+        try
+        {
+            root = UserConfigJson.LoadObject(targetPath);
+        }
+        catch (AgentPackException)
+        {
+            return FragmentState.Modified;
+        }
+
+        var stored = UserConfigJson.ParseFragment(fragment);
+        switch (provider)
+        {
+            case ProviderName.Copilot:
+                return JsonNode.DeepEquals(root, stored) ? FragmentState.Present : FragmentState.Modified;
+
+            case ProviderName.Cursor:
+                {
+                    var entry = stored["entry"] as JsonObject;
+                    var existing = FindCursorEntry(root["hooks"] as JsonObject, stored["event"]?.GetValue<string>() ?? "", CommandOf(entry));
+                    if (existing is null) return FragmentState.Absent;
+                    return JsonNode.DeepEquals(existing, entry) ? FragmentState.Present : FragmentState.Modified;
+                }
+
+            default:
+                {
+                    var handler = stored["handler"] as JsonObject;
+                    var existing = FindClaudeStyleHandler(root["hooks"] as JsonObject, stored["event"]?.GetValue<string>() ?? "", CommandOf(handler));
+                    if (existing is null) return FragmentState.Absent;
+                    return JsonNode.DeepEquals(existing.Value.Handler, handler) &&
+                           MatcherEquals(existing.Value.Matcher, stored["matcher"]?.GetValue<string>())
+                        ? FragmentState.Present
+                        : FragmentState.Modified;
+                }
+        }
+    }
+
+    /// <summary>Removes our registration from the shared provider config (used by 'agentpack remove').</summary>
+    public static void RemoveFragment(string targetPath, ProviderName provider, string fragment, Action<string> backupIfExists)
+    {
+        if (!File.Exists(targetPath) || provider == ProviderName.Copilot) return;
+
+        var root = UserConfigJson.LoadObject(targetPath);
+        var stored = UserConfigJson.ParseFragment(fragment);
+        var hooks = root["hooks"] as JsonObject;
+        var changed = provider == ProviderName.Cursor
+            ? RemoveCursorEntry(hooks, stored["event"]?.GetValue<string>() ?? "", CommandOf(stored["entry"] as JsonObject))
+            : RemoveClaudeStyleHandler(hooks, stored["event"]?.GetValue<string>() ?? "", CommandOf(stored["handler"] as JsonObject));
+
+        if (!changed) return;
+        backupIfExists(targetPath);
+        AtomicWrite.Text(targetPath, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
     /// <summary>The exact config fragment that will be written — used for previews before applying.</summary>
@@ -100,11 +205,9 @@ public static class HookMerger
     /// <summary>Copilot hook config files are per-asset, so removal may delete them; the other providers share one config file.</summary>
     public static bool IsSharedConfigFile(ProviderName provider) => provider != ProviderName.Copilot;
 
-    private static void MergeSharedConfig(string path, Asset asset, Action<string> backupIfExists, Func<JsonObject, Asset, bool> merge, bool setVersion)
+    private static void MergeSharedConfig(string path, Action<string> backupIfExists, Func<JsonObject, bool> merge, bool setVersion)
     {
-        var root = File.Exists(path)
-            ? JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject()
-            : new JsonObject();
+        var root = UserConfigJson.LoadObject(path);
 
         if (setVersion) root["version"] ??= 1;
         if (root["hooks"] is not JsonObject hooks)
@@ -113,22 +216,22 @@ public static class HookMerger
             root["hooks"] = hooks;
         }
 
-        var changed = merge(hooks, asset);
+        var changed = merge(hooks);
         if (!changed && File.Exists(path)) return;
         if (File.Exists(path)) backupIfExists(path);
         AtomicWrite.Text(path, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
-    private static bool MergeClaudeStyleHook(JsonObject hooks, Asset asset, string command, string eventName)
+    private static bool MergeClaudeStyleHook(JsonObject hooks, string path, string matcher, JsonObject handler, string eventName,
+        string? previousFragment, bool overwriteModified)
     {
-        var matcher = Matcher(asset);
-        var handler = ClaudeStyleHandler(asset, command);
+        var changed = ReplaceableClaudeStyleHandler(hooks, path, eventName, handler, previousFragment, overwriteModified);
 
         if (hooks[eventName] is not JsonArray eventArray)
         {
             hooks[eventName] = new JsonArray
             {
-                new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { handler } }
+                new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { CloneNode(handler) } }
             };
             return true;
         }
@@ -138,49 +241,176 @@ public static class HookMerger
             if (!matcher.Equals(node["matcher"]?.GetValue<string>(), StringComparison.OrdinalIgnoreCase)) continue;
             if (node["hooks"] is not JsonArray handlers)
             {
-                node["hooks"] = new JsonArray { handler };
+                node["hooks"] = new JsonArray { CloneNode(handler) };
                 return true;
             }
 
-            if (handlers.Any(existing => JsonNode.DeepEquals(existing, handler))) return false;
-            handlers.Add(handler);
+            if (handlers.Any(existing => JsonNode.DeepEquals(existing, handler))) return changed;
+            handlers.Add(CloneNode(handler));
             return true;
         }
 
-        eventArray.Add(new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { handler } });
+        eventArray.Add(new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { CloneNode(handler) } });
         return true;
     }
 
-    private static bool MergeCursorHook(JsonObject hooks, Asset asset, string command)
+    /// <summary>
+    /// Clears the way for a re-registration: removes our previous registration
+    /// (recorded in the lockfile) and, when the drift decision allows it, a
+    /// locally modified registration with the same command. A same-command
+    /// registration we cannot account for is a conflict, never silently stacked.
+    /// </summary>
+    private static bool ReplaceableClaudeStyleHandler(JsonObject hooks, string path, string eventName, JsonObject handler,
+        string? previousFragment, bool overwriteModified)
     {
-        var eventName = CursorEvent(asset);
-        var entry = CursorEntry(asset, command);
+        var changed = false;
+        if (previousFragment is not null)
+        {
+            var previous = UserConfigJson.ParseFragment(previousFragment);
+            changed = RemoveClaudeStyleHandler(hooks, previous["event"]?.GetValue<string>() ?? "", CommandOf(previous["handler"] as JsonObject));
+        }
+
+        var command = CommandOf(handler);
+        var existing = FindClaudeStyleHandler(hooks, eventName, command);
+        if (existing is null || JsonNode.DeepEquals(existing.Value.Handler, handler)) return changed;
+
+        if (!overwriteModified)
+        {
+            throw new AgentPackException(
+                $"A hook running '{command}' already exists in {path} with a different configuration.",
+                "Remove the existing entry (or rerun with --force to overwrite), then retry.",
+                ExitCodes.DriftOrConflict);
+        }
+
+        return RemoveClaudeStyleHandler(hooks, eventName, command) || changed;
+    }
+
+    private static bool MergeCursorHook(JsonObject hooks, string path, string eventName, JsonObject entry,
+        string? previousFragment, bool overwriteModified)
+    {
+        var changed = false;
+        if (previousFragment is not null)
+        {
+            var previous = UserConfigJson.ParseFragment(previousFragment);
+            changed = RemoveCursorEntry(hooks, previous["event"]?.GetValue<string>() ?? "", CommandOf(previous["entry"] as JsonObject));
+        }
+
+        var command = CommandOf(entry);
+        var existing = FindCursorEntry(hooks, eventName, command);
+        if (existing is not null && !JsonNode.DeepEquals(existing, entry))
+        {
+            if (!overwriteModified)
+            {
+                throw new AgentPackException(
+                    $"A hook running '{command}' already exists in {path} with a different configuration.",
+                    "Remove the existing entry (or rerun with --force to overwrite), then retry.",
+                    ExitCodes.DriftOrConflict);
+            }
+
+            changed = RemoveCursorEntry(hooks, eventName, command) || changed;
+        }
+
         if (hooks[eventName] is not JsonArray eventArray)
         {
-            hooks[eventName] = new JsonArray { entry };
+            hooks[eventName] = new JsonArray { CloneNode(entry) };
             return true;
         }
 
-        if (eventArray.Any(existing => JsonNode.DeepEquals(existing, entry))) return false;
-        eventArray.Add(entry);
+        if (eventArray.Any(x => JsonNode.DeepEquals(x, entry))) return changed;
+        eventArray.Add(CloneNode(entry));
         return true;
     }
 
-    private static void WriteCopilotHookFile(string path, Asset asset, string command, string supportPath, Action<string> backupIfExists)
+    private static void WriteCopilotHookFile(string path, JsonObject document, Action<string> backupIfExists)
     {
-        // A PowerShell twin next to the bash script makes the hook cross-platform.
-        var powershell = FindPowershellTwin(supportPath, command);
-        var document = CopilotHookDocument(asset, command, powershell);
-
         if (File.Exists(path))
         {
-            var existing = JsonNode.Parse(File.ReadAllText(path));
+            var existing = UserConfigJson.LoadObject(path);
             if (JsonNode.DeepEquals(existing, document)) return;
             backupIfExists(path);
         }
 
         AtomicWrite.Text(path, document.ToJsonString(JsonOptions) + Environment.NewLine);
     }
+
+    private static (JsonObject Handler, string? Matcher)? FindClaudeStyleHandler(JsonObject? hooks, string eventName, string command)
+    {
+        if (command.Length == 0 || hooks?[eventName] is not JsonArray eventArray) return null;
+        foreach (var group in eventArray.OfType<JsonObject>())
+        {
+            if (group["hooks"] is not JsonArray handlers) continue;
+            foreach (var candidate in handlers.OfType<JsonObject>())
+            {
+                if (command.Equals(CommandOf(candidate), StringComparison.Ordinal))
+                {
+                    return (candidate, group["matcher"]?.GetValue<string>());
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool RemoveClaudeStyleHandler(JsonObject? hooks, string eventName, string command)
+    {
+        if (command.Length == 0 || hooks?[eventName] is not JsonArray eventArray) return false;
+
+        var changed = false;
+        foreach (var group in eventArray.OfType<JsonObject>().ToList())
+        {
+            if (group["hooks"] is not JsonArray handlers) continue;
+            foreach (var candidate in handlers.OfType<JsonObject>().ToList())
+            {
+                if (command.Equals(CommandOf(candidate), StringComparison.Ordinal))
+                {
+                    handlers.Remove(candidate);
+                    changed = true;
+                }
+            }
+
+            if (handlers.Count == 0) eventArray.Remove(group);
+        }
+
+        if (eventArray.Count == 0) hooks.Remove(eventName);
+        return changed;
+    }
+
+    private static JsonObject? FindCursorEntry(JsonObject? hooks, string eventName, string command)
+    {
+        if (command.Length == 0 || hooks?[eventName] is not JsonArray eventArray) return null;
+        return eventArray.OfType<JsonObject>().FirstOrDefault(x => command.Equals(CommandOf(x), StringComparison.Ordinal));
+    }
+
+    private static bool RemoveCursorEntry(JsonObject? hooks, string eventName, string command)
+    {
+        if (command.Length == 0 || hooks?[eventName] is not JsonArray eventArray) return false;
+
+        var changed = false;
+        foreach (var candidate in eventArray.OfType<JsonObject>().ToList())
+        {
+            if (command.Equals(CommandOf(candidate), StringComparison.Ordinal))
+            {
+                eventArray.Remove(candidate);
+                changed = true;
+            }
+        }
+
+        if (eventArray.Count == 0) hooks.Remove(eventName);
+        return changed;
+    }
+
+    private static string CommandOf(JsonObject? node) => node?["command"]?.GetValue<string>() ?? "";
+
+    private static string ClaudeStyleFragment(string eventName, string matcher, JsonObject handler) =>
+        new JsonObject { ["event"] = eventName, ["matcher"] = matcher, ["handler"] = CloneNode(handler) }.ToJsonString();
+
+    private static string CursorFragment(string eventName, JsonObject entry) =>
+        new JsonObject { ["event"] = eventName, ["entry"] = CloneNode(entry) }.ToJsonString();
+
+    private static bool MatcherEquals(string? actual, string? expected) =>
+        string.Equals(actual ?? "", expected ?? "", StringComparison.OrdinalIgnoreCase);
+
+    private static JsonObject CloneNode(JsonObject node) => JsonNode.Parse(node.ToJsonString())!.AsObject();
 
     private static JsonObject CopilotHookDocument(Asset asset, string bashCommand, string? powershellCommand)
     {

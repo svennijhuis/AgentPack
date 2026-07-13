@@ -67,6 +67,9 @@ public static class ContentHash
         File.SetUnixFileMode(path, File.GetUnixFileMode(path) | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
     }
 
+    public static string OfText(string text) =>
+        "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
+
     public static string ShortKey(params string?[] parts)
     {
         var input = string.Join("", parts.Select(p => p ?? ""));

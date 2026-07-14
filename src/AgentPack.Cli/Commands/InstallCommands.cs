@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using AgentPack.Cli.Ui;
 using AgentPack.Core;
+using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace AgentPack.Cli.Commands;
@@ -69,6 +70,7 @@ public class AddCommand : Command<AddCommand.Settings>
         }
 
         var plan = new Installer(session.Paths).Plan(loaded, assets, providers, scope);
+        if (Apply) Output.ExternalLicenseNotices(loaded, plan);
         return CommandHelpers.RenderAndApply(session, loaded, plan, scope, settings, Title, Apply);
     }
 }
@@ -86,6 +88,18 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
         [CommandArgument(0, "<targets>")]
         [Description("Asset ids to remove, optionally preceded by a kind, or 'all'.")]
         public string[] Targets { get; set; } = [];
+
+        [CommandOption("--force")]
+        [Description("Back up and delete locally modified managed files.")]
+        public bool Force { get; set; }
+
+        [CommandOption("--keep-local")]
+        [Description("Unregister locally modified files and leave them unmanaged.")]
+        public bool KeepLocal { get; set; }
+
+        public override ValidationResult Validate() => Force && KeepLocal
+            ? ValidationResult.Error("--force and --keep-local cannot be combined.")
+            : ValidationResult.Success();
     }
 
     public override int Execute(CommandContext context, Settings settings)
@@ -105,7 +119,8 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
             targets.RemoveAt(0);
         }
 
-        var removed = new Installer(session.Paths).Remove(kind, targets, settings.ExplicitProviders(), scope);
+        var removed = new Installer(session.Paths).Remove(
+            kind, targets, settings.ExplicitProviders(), scope, settings.Force, settings.KeepLocal);
         if (removed.Count == 0)
         {
             Output.Info("Nothing to remove.");
@@ -118,6 +133,48 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
             ["ID", "Kind", "Provider", "Version", "Path"],
             removed.Select(x => new[] { x.Id, x.Kind.Display(), x.Provider.Display(), x.Version, x.Path }));
         Output.Info("Entries in shared provider configs (hooks/MCP) were deregistered from the lockfile; shared files were left untouched.");
+        return 0;
+    }
+}
+
+public sealed class PruneCommand : Command<PruneCommand.Settings>
+{
+    public sealed class Settings : ProviderScopeSettings
+    {
+        [CommandOption("-y|--yes")]
+        [Description("Remove clean orphaned dependencies without confirmation.")]
+        public bool Yes { get; set; }
+    }
+
+    public override int Execute(CommandContext context, Settings settings)
+    {
+        var session = new CliSession();
+        var loaded = session.LoadCatalog();
+        var scope = settings.ResolveScope(session.Paths);
+        var providers = settings.ExplicitProviders();
+        var installer = new Installer(session.Paths);
+        var preview = installer.Prune(scope, providers, apply: false, loaded);
+        if (preview.Clean.Count == 0 && preview.Modified.Count == 0)
+        {
+            Output.Info("No orphaned automatic dependencies found.");
+            return 0;
+        }
+
+        Output.Table(["ID", "Provider", "State", "Path"],
+            preview.Clean.Select(x => new[] { x.Id, x.Provider.Display(), "remove", x.Path })
+                .Concat(preview.Modified.Select(x => new[] { x.Id, x.Provider.Display(), "keep (local changes)", x.Path })));
+        if (!settings.Yes)
+        {
+            if (!Output.CanPrompt || !Prompts.Confirm($"Remove {preview.Clean.Count} clean orphan(s)?"))
+            {
+                Output.Info("Preview only; nothing removed. Pass --yes to apply.");
+                return 0;
+            }
+        }
+
+        var result = installer.Prune(scope, providers, apply: true, loaded);
+        Output.Success($"Pruned {result.Clean.Count} clean orphaned dependency install(s).");
+        if (result.Modified.Count > 0) Output.Warning($"Kept {result.Modified.Count} locally modified orphan(s).");
         return 0;
     }
 }

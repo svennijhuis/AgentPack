@@ -1,0 +1,13 @@
+# External asset: content lives upstream, pinned to a reviewed commit.
+name: Codebase Design
+version: 1.0.0
+description: Shared vocabulary and principles for designing deep modules with small interfaces.
+groups: [react/review, node/review, typescript/review, csharp/review]
+tags: [external, design]
+owner: developer-platform
+status: recommended
+channel: stable
+source:
+  url: https://github.com/mattpocock/skills/tree/main/skills/engineering/codebase-design
+  ref: 66898f60e8c744e269f8ce06c2b2b99ce7660d5f
+  license: MIT

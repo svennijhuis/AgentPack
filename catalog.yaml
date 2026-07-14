@@ -1,5 +1,5 @@
 schemaVersion: "1"
-catalogVersion: 0.2.0
+catalogVersion: 0.3.0
 groups:
   - id: engineering
     name: Engineering
@@ -11,6 +11,16 @@ groups:
     name: Backend
   - id: infra
     name: Infrastructure
+  - id: react
+    name: React
+  - id: node
+    name: Node.js
+  - id: typescript
+    name: TypeScript
+  - id: csharp
+    name: C#
+  - id: git
+    name: Git
   - id: api
     name: API
     status: deprecated
@@ -22,3 +32,11 @@ profiles:
     providers: [codex, claude]
     groups: [backend]
     assets: [grill-me, secret-scan, github]
+  - id: frontend
+    name: Frontend Team
+    providers: [claude, cursor, copilot]
+    groups: [react, typescript]
+  - id: dotnet
+    name: .NET Team
+    providers: [claude, codex]
+    groups: [csharp]

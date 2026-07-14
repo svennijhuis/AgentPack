@@ -37,6 +37,57 @@ public static class Prompts
 
     public static bool Confirm(string question) => AnsiConsole.Confirm(question, defaultValue: true);
 
+    public static string Text(string question, string defaultValue) => AnsiConsole.Prompt(
+        new TextPrompt<string>($"[bold]{Markup.Escape(question)}[/]")
+            .DefaultValue(defaultValue)
+            .Validate(input => string.IsNullOrWhiteSpace(input)
+                ? ValidationResult.Error("[red]A value is required.[/]")
+                : ValidationResult.Success())).Trim();
+
+    public static Asset SelectAgent(IReadOnlyList<Asset> agents, string title)
+    {
+        var choices = agents.OrderBy(x => x.Id, StringComparer.Ordinal).ToList();
+        return AnsiConsole.Prompt(new SelectionPrompt<Asset>()
+            .Title($"[bold]{Markup.Escape(title)}[/]")
+            .PageSize(18)
+            .MoreChoicesText("[grey](move up and down to reveal more agents)[/]")
+            .UseConverter(Label)
+            .AddChoices(choices));
+    }
+
+    public static IReadOnlyList<ProviderName> SelectAgentProviders(IReadOnlyList<ProviderName>? selected = null)
+    {
+        var choices = ProviderNames.All.ToList();
+        var prompt = new MultiSelectionPrompt<ProviderName>()
+            .Title("[bold]Which providers should this agent support?[/]")
+            .PageSize(8)
+            .InstructionsText("[grey](space toggles, enter confirms)[/]")
+            .UseConverter(x => x.Display())
+            .AddChoices(choices);
+        foreach (var provider in selected ?? choices) prompt.Select(provider);
+        return AnsiConsole.Prompt(prompt);
+    }
+
+    public static IReadOnlyList<AgentTool> SelectAgentTools(IReadOnlyList<AgentTool>? suggested = null)
+    {
+        var mode = AnsiConsole.Prompt(new SelectionPrompt<string>()
+            .Title("[bold]How should built-in tools be configured?[/]")
+            .AddChoices(
+                "inherit all tools from each provider (recommended)",
+                "choose portable capability classes"));
+        if (mode.StartsWith("inherit", StringComparison.Ordinal)) return [];
+
+        var choices = Enum.GetValues<AgentTool>().ToList();
+        var prompt = new MultiSelectionPrompt<AgentTool>()
+            .Title("[bold]Select portable capabilities[/]")
+            .PageSize(10)
+            .InstructionsText("[grey](space toggles, enter confirms; at least one required)[/]")
+            .UseConverter(x => x.ToString().ToLowerInvariant())
+            .AddChoices(choices);
+        foreach (var tool in suggested ?? [AgentTool.Read, AgentTool.Search]) prompt.Select(tool);
+        return AnsiConsole.Prompt(prompt);
+    }
+
     /// <summary>
     /// Asks what to do with an item whose installed content was modified locally.
     /// Offers a diff so the user can decide with full information.
@@ -69,6 +120,18 @@ public static class Prompts
     /// <summary>File-level diff between the installed content and the incoming catalog content or merge fragment.</summary>
     public static void ShowDiff(InstallPlanItem item, InstallScope scope, string scopeRoot)
     {
+        if (item.Target.Mode is InstallMode.CopyTree or InstallMode.RenderAgent)
+        {
+            var candidate = item.StagedCandidatePath ?? item.SourcePath;
+            var snapshots = new List<string[]>
+            {
+                new[] { "last managed", item.Existing?.Version ?? "(none)", Hash(item.Existing?.ManagedSnapshotPath) },
+                new[] { "local", "current", Hash(item.TargetPath) },
+                new[] { "catalog candidate", item.Asset.Version.ToString(), Hash(candidate) }
+            };
+            Output.Table(["Version", "Label", "Checksum"], snapshots.Select(x => new[] { x[1], x[0], x[2] }));
+        }
+
         switch (item.Target.Mode)
         {
             case InstallMode.MergeMcp:
@@ -82,13 +145,14 @@ public static class Prompts
                 return;
         }
 
-        if (item.SourcePath is null)
+        var incomingPath = item.StagedCandidatePath ?? item.SourcePath;
+        if (incomingPath is null)
         {
             Output.Info("Incoming content is external and not fetched yet; no diff available until apply.");
             return;
         }
 
-        var incoming = FileSet(item.SourcePath);
+        var incoming = FileSet(incomingPath);
         var installed = FileSet(item.TargetPath);
         var all = incoming.Keys.Union(installed.Keys, StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.Ordinal);
 
@@ -109,6 +173,9 @@ public static class Prompts
         }
 
         AnsiConsole.Write(table);
+
+        static string Hash(string? path) => !string.IsNullOrWhiteSpace(path) &&
+            (File.Exists(path) || Directory.Exists(path)) ? ContentHash.Compute(path) : "(unavailable)";
     }
 
     private static Dictionary<string, string> FileSet(string path)

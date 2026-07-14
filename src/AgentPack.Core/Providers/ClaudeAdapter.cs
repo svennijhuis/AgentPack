@@ -17,6 +17,9 @@ public sealed class ClaudeAdapter : IProviderAdapter
     {
         return asset.Kind switch
         {
+            AssetKind.Agents => Supported(Name, asset,
+                Path.Combine(".claude", "agents", asset.Id + ".md"), InstallMode.RenderAgent, isFileTarget: true),
+
             AssetKind.Skills => Supported(Name, asset, Path.Combine(".claude", "skills", asset.Id), InstallMode.CopyTree),
 
             AssetKind.Hooks => Supported(Name, asset, Path.Combine(".claude", "settings.json"), InstallMode.MergeHook),

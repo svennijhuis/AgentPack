@@ -1,0 +1,9 @@
+name: Dependency Analysis
+version: 1.0.0
+description: Maps dependency constraints and upgrade risks before changing package or framework versions.
+groups: [engineering, backend]
+tags: [dependencies, migration, analysis]
+providers: [claude, codex, copilot, cursor]
+owner: developer-platform
+status: recommended
+channel: stable

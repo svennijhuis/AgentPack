@@ -36,18 +36,21 @@ public static class TestData
         IReadOnlyList<ProviderName>? providers = null,
         McpServer? mcp = null,
         HookSpec? hook = null,
+        AgentSpec? agent = null,
         AssetStatus status = AssetStatus.Recommended)
     {
         return new Asset
         {
             Id = id,
             Name = id,
+            Description = "Test asset.",
             Kind = kind,
             Version = SemVersion.Parse(version),
             Providers = providers ?? ProviderNames.All,
             Source = source ?? new AssetSource.Local($"assets/{kind.Display()}/{id}/content", null),
             Mcp = mcp,
             Hook = hook,
+            Agent = agent,
             Status = status
         };
     }
@@ -61,7 +64,7 @@ public static class TestData
 
     /// <summary>Writes a local asset's content folder and returns the asset pointing at it.</summary>
     public static Asset WriteLocalAsset(string root, AssetKind kind, string id, string version = "1.0.0",
-        IReadOnlyDictionary<string, string>? files = null, McpServer? mcp = null, HookSpec? hook = null)
+        IReadOnlyDictionary<string, string>? files = null, McpServer? mcp = null, HookSpec? hook = null, AgentSpec? agent = null)
     {
         var contentRelative = $"assets/{kind.Display()}/{id}/content";
         var contentPath = System.IO.Path.Combine(root, contentRelative);
@@ -73,13 +76,14 @@ public static class TestData
             File.WriteAllText(filePath, body);
         }
 
-        return Asset(kind, id, version, new AssetSource.Local(contentRelative, null), mcp: mcp, hook: hook);
+        return Asset(kind, id, version, new AssetSource.Local(contentRelative, null), mcp: mcp, hook: hook, agent: agent);
     }
 
     private static Dictionary<string, string> DefaultFiles(AssetKind kind, string id) => kind switch
     {
         AssetKind.Hooks => new Dictionary<string, string> { ["hook.sh"] = "#!/usr/bin/env bash\necho ok\n" },
         AssetKind.Mcp => new Dictionary<string, string> { ["mcp.json"] = """{"name":"NAME","transport":"stdio","command":"run-server","envVars":["TOKEN"]}""".Replace("NAME", id) },
+        AssetKind.Agents => new Dictionary<string, string> { ["AGENT.md"] = $"---\nname: upstream\ntools: [anything]\n---\n# {id}\n\nDo the work.\n" },
         _ => new Dictionary<string, string> { ["SKILL.md"] = $"# {id}\n" }
     };
 

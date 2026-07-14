@@ -1,0 +1,13 @@
+# External asset: content lives upstream, pinned to a reviewed commit.
+name: TDD
+version: 1.0.0
+description: Test-first red-green-refactor loop for building features and fixing bugs.
+groups: [react/testing, node/testing, typescript/testing, csharp/testing]
+tags: [external, testing, quality]
+owner: developer-platform
+status: recommended
+channel: stable
+source:
+  url: https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd
+  ref: 66898f60e8c744e269f8ce06c2b2b99ce7660d5f
+  license: MIT

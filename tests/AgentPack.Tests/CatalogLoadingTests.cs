@@ -39,6 +39,69 @@ public class CatalogLoadingTests
     }
 
     [Fact]
+    public void AgentImportsParseScalarAndVersionedForms()
+    {
+        using var temp = new TempDir();
+        var root = Path.Combine(temp.Path, "work");
+        WriteMinimalCatalog(root);
+        WriteAsset(root, "agents", "upgrade", """
+            name: Upgrade
+            version: 1.0.0
+            agent:
+              tools: [read, execute]
+              imports:
+                skills:
+                  - analysis
+                  - id: migration
+                    version: ">=1.2.0 <2.0.0"
+            """);
+
+        var imports = Assert.Single(Load(temp).Catalog.Assets).Agent!.Imports.Skills;
+        Assert.Null(imports[0].VersionRange);
+        Assert.Equal(">=1.2.0 <2.0.0", imports[1].VersionRange!.ToString());
+    }
+
+    [Fact]
+    public void AgentModelMetadataIsIgnoredWithWarning()
+    {
+        using var temp = new TempDir();
+        var root = Path.Combine(temp.Path, "work");
+        WriteMinimalCatalog(root);
+        WriteAsset(root, "agents", "upgrade", """
+            name: Upgrade
+            version: 1.0.0
+            description: Upgrade dependencies.
+            agent:
+              models:
+                copilot: gpt-4o
+              imports: {}
+            """);
+
+        var loaded = Load(temp);
+
+        Assert.Single(loaded.Catalog.Assets);
+        Assert.Contains(loaded.Warnings, x => x.Code == "agent.model.ignored");
+    }
+
+    [Fact]
+    public void UnsupportedAgentImportKindFailsAtTypedBoundary()
+    {
+        using var temp = new TempDir();
+        var root = Path.Combine(temp.Path, "work");
+        WriteMinimalCatalog(root);
+        WriteAsset(root, "agents", "upgrade", """
+            name: Upgrade
+            version: 1.0.0
+            agent:
+              imports:
+                hooks: [guard]
+            """);
+
+        var ex = Assert.Throws<AgentPackException>(() => Load(temp));
+        Assert.Contains("agent.import.unsupported", ex.Message);
+    }
+
+    [Fact]
     public void SourceShorthandParsesUrlAndRef()
     {
         using var temp = new TempDir();

@@ -26,50 +26,50 @@ public sealed class CatalogLockWriter
             switch (asset.Source)
             {
                 case AssetSource.Local local:
-                {
-                    var contentPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
-                    if (!File.Exists(contentPath) && !Directory.Exists(contentPath))
                     {
-                        messages.Add($"{asset.Id}: local content missing at {local.RelativePath} — skipped.");
-                        continue;
-                    }
+                        var contentPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
+                        if (!File.Exists(contentPath) && !Directory.Exists(contentPath))
+                        {
+                            messages.Add($"{asset.Id}: local content missing at {local.RelativePath} — skipped.");
+                            continue;
+                        }
 
-                    lockFile.Entries.Add(new CatalogLockEntry
-                    {
-                        Id = asset.Id,
-                        Kind = asset.Kind.Display(),
-                        SourceType = "local",
-                        Checksum = ContentHash.Compute(contentPath)
-                    });
-                    break;
-                }
+                        lockFile.Entries.Add(new CatalogLockEntry
+                        {
+                            Id = asset.Id,
+                            Kind = asset.Kind.Display(),
+                            SourceType = "local",
+                            Checksum = ContentHash.Compute(contentPath)
+                        });
+                        break;
+                    }
 
                 case AssetSource.External external:
-                {
-                    var entry = new CatalogLockEntry
                     {
-                        Id = asset.Id,
-                        Kind = asset.Kind.Display(),
-                        SourceType = "external",
-                        Url = external.Url,
-                        Ref = external.Ref
-                    };
+                        var entry = new CatalogLockEntry
+                        {
+                            Id = asset.Id,
+                            Kind = asset.Kind.Display(),
+                            SourceType = "external",
+                            Url = external.Url,
+                            Ref = external.Ref
+                        };
 
-                    if (fetchExternal)
-                    {
-                        // Checksum the exact content at the pinned ref so installs can detect tampering.
-                        var bare = asset with { Source = external with { Checksum = null } };
-                        var contentPath = resolver.ResolveToCache(bare);
-                        entry.Checksum = ContentHash.Compute(contentPath);
-                    }
-                    else
-                    {
-                        messages.Add($"{asset.Id}: external checksum not computed (--no-fetch).");
-                    }
+                        if (fetchExternal)
+                        {
+                            // Checksum the exact content at the pinned ref so installs can detect tampering.
+                            var bare = asset with { Source = external with { Checksum = null } };
+                            var contentPath = resolver.ResolveToCache(bare);
+                            entry.Checksum = ContentHash.Compute(contentPath);
+                        }
+                        else
+                        {
+                            messages.Add($"{asset.Id}: external checksum not computed (--no-fetch).");
+                        }
 
-                    lockFile.Entries.Add(entry);
-                    break;
-                }
+                        lockFile.Entries.Add(entry);
+                        break;
+                    }
             }
         }
 

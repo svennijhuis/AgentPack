@@ -17,6 +17,7 @@ public sealed class CopilotAdapter : IProviderAdapter
         Exists(root, ".github", "copilot-instructions.md") ||
         Exists(root, ".github", "instructions") ||
         Exists(root, ".github", "prompts") ||
+        Exists(root, ".github", "agents") ||
         Exists(root, ".github", "hooks") ||
         Exists(root, ".vscode", "mcp.json");
 
@@ -24,6 +25,10 @@ public sealed class CopilotAdapter : IProviderAdapter
     {
         return asset.Kind switch
         {
+            AssetKind.Agents => userScope
+                ? Supported(Name, asset, Path.Combine(".copilot", "agents", asset.Id + ".agent.md"), InstallMode.RenderAgent, isFileTarget: true)
+                : Supported(Name, asset, Path.Combine(".github", "agents", asset.Id + ".agent.md"), InstallMode.RenderAgent, isFileTarget: true),
+
             AssetKind.Skills => userScope
                 ? Supported(Name, asset, Path.Combine(".copilot", "skills", asset.Id), InstallMode.CopyTree)
                 : Supported(Name, asset, Path.Combine(".github", "skills", asset.Id), InstallMode.CopyTree),

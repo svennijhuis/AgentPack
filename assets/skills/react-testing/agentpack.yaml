@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: React Testing
+version: 1.0.0
+description: Test React with Testing Library — query by accessible role/label, assert user-visible behavior not implementation.
+groups: [react/testing]
+tags: [react, frontend, testing]
+owner: developer-platform
+status: recommended
+channel: stable

@@ -23,4 +23,8 @@ public sealed class LockEntry
     public string SourceChecksum { get; set; } = "";
     public string InstalledChecksum { get; set; } = "";
     public bool Pinned { get; set; }
+    public bool Direct { get; set; } = true;
+    public List<string> RequiredBy { get; set; } = [];
+    public string? RenderFingerprint { get; set; }
+    public string? ManagedSnapshotPath { get; set; }
 }

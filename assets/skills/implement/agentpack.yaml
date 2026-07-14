@@ -1,0 +1,13 @@
+# External asset: content lives upstream, pinned to a reviewed commit.
+name: Implement
+version: 1.0.0
+description: Drive a planned change to completion with disciplined, verifiable execution.
+groups: [react/workflow, node/workflow, typescript/workflow, csharp/workflow]
+tags: [external, workflow]
+owner: developer-platform
+status: recommended
+channel: stable
+source:
+  url: https://github.com/mattpocock/skills/tree/main/skills/engineering/implement
+  ref: 66898f60e8c744e269f8ce06c2b2b99ce7660d5f
+  license: MIT

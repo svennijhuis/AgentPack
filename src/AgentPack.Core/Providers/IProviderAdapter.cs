@@ -9,7 +9,10 @@ public enum InstallMode
     MergeMcp,
 
     /// <summary>Copy hook content and register it in the provider's hook config file.</summary>
-    MergeHook
+    MergeHook,
+
+    /// <summary>Compile a provider-neutral agent into the provider's native agent file.</summary>
+    RenderAgent
 }
 
 public sealed record InstallTarget(

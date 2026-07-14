@@ -1,0 +1,13 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Dotnet Build Gate
+version: 1.0.0
+description: Runs dotnet build once when the agent finishes and surfaces build errors. Advisory, non-blocking; no-op without a project or the .NET SDK.
+groups: [csharp/format]
+tags: [build, gate, dotnet]
+owner: developer-platform
+status: recommended
+channel: stable
+hook:
+  trigger: stop
+  command: hook.sh
+  timeoutSec: 180

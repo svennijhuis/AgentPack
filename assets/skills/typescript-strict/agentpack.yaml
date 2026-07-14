@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: TypeScript Strict
+version: 1.0.0
+description: Type-safe TypeScript under strict mode — eliminate any, model with unions, narrow deliberately.
+groups: [typescript]
+tags: [typescript, types, quality]
+owner: developer-platform
+status: recommended
+channel: stable

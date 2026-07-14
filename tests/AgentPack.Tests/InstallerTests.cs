@@ -27,6 +27,7 @@ public class InstallerTests
         Assert.Equal(".claude/skills/demo", entry.Path);
         Assert.Equal(AssetKind.Skills, entry.Kind);
         Assert.Equal(ProviderName.Claude, entry.Provider);
+        Assert.True(Directory.Exists(entry.ManagedSnapshotPath));
     }
 
     [Fact]
@@ -180,6 +181,26 @@ public class InstallerTests
         Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "skills", "demo")));
         Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".mcp.json")), "shared MCP config must not be deleted");
         Assert.Empty(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
+    }
+
+    [Fact]
+    public void AddingAnotherMcpServerDoesNotMarkManagedServerAsLocallyModified()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var first = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Mcp, "first",
+            mcp: new McpServer { Server = "first", Command = "first-server" });
+        var second = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Mcp, "second",
+            mcp: new McpServer { Server = "second", Command = "second-server" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, first, second);
+        var installer = new Installer(paths);
+        installer.Apply(installer.Plan(loaded, [first], [ProviderName.Cursor], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+        installer.Apply(installer.Plan(loaded, [second], [ProviderName.Cursor], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+
+        var firstAgain = Assert.Single(installer.Plan(loaded, [first], [ProviderName.Cursor], InstallScope.Project).Items);
+        Assert.Equal(InstallState.Installed, firstAgain.State);
     }
 
     [Fact]

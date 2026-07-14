@@ -160,7 +160,7 @@ public static class CommandHelpers
         var groupList = groups.SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).ToList();
         if (groupList.Count > 0)
         {
-            assets = assets.Where(x => x.Groups.Any(g => groupList.Contains(g, StringComparer.OrdinalIgnoreCase)));
+            assets = assets.Where(x => x.Groups.Any(g => groupList.Any(f => GroupMatch.Matches(f, g))));
         }
 
         if (providerFilter is { Count: > 0 })
@@ -225,6 +225,11 @@ public static class CommandHelpers
         string title,
         bool apply)
     {
+        Output.AgentCompatibility(
+            loaded,
+            plan.Items
+                .Where(x => x.Asset.Kind == AssetKind.Agents)
+                .Select(x => (x.Asset, x.Provider)));
         Output.Plan(title, plan, scope, session.Paths.WorkingDirectory, session.Paths.ProviderHome);
         if (!apply || plan.Items.Count == 0) return 0;
 
@@ -245,12 +250,12 @@ public static class CommandHelpers
         var scopeRoot = installer.ScopeRoot(scope);
         var results = installer.Apply(plan.Items, loaded, scope, item => ResolveDrift(item, settings, scope, scopeRoot));
         Output.ApplyResults(results);
-        PrintFollowUps(results, scope);
+        PrintFollowUps(results, scope, loaded);
         return 0;
     }
 
     /// <summary>Provider-specific steps the user still has to do after a successful apply.</summary>
-    private static void PrintFollowUps(IReadOnlyList<ApplyResult> results, InstallScope scope)
+    private static void PrintFollowUps(IReadOnlyList<ApplyResult> results, InstallScope scope, LoadedCatalog loaded)
     {
         var applied = results
             .Where(x => x.Outcome is ApplyOutcome.Installed or ApplyOutcome.Updated)
@@ -267,9 +272,24 @@ public static class CommandHelpers
                         "Copilot CLI picks it up immediately; the Copilot cloud coding agent reads hooks from the default branch only.");
         }
 
+        var importedMcp = applied
+            .Where(x => x.Asset.Kind == AssetKind.Agents)
+            .SelectMany(x => new AgentDependencyResolver(loaded.Catalog).Resolve(x.Asset, x.Provider).Mcp);
+
+        foreach (var item in applied.Where(x => x.Asset.Kind == AssetKind.Agents))
+        {
+            var dependencies = new AgentDependencyResolver(loaded.Catalog).Resolve(item.Asset, item.Provider);
+            if (dependencies.Skills.Count > 0)
+                Output.Info($"Agent requirement ({item.Provider.Display()}/{item.Asset.Id}) skills: {string.Join(", ", dependencies.Skills.Select(x => x.Id))}.");
+            if (dependencies.Mcp.Count > 0)
+                Output.Info($"Agent requirement ({item.Provider.Display()}/{item.Asset.Id}) MCP tools: " +
+                    string.Join(", ", dependencies.Mcp.SelectMany(x => x.Mcp!.Tools.Select(tool => $"{x.Mcp.Server}/{tool}"))) + ".");
+        }
         var envVars = applied
             .Where(x => x.Asset.Mcp is not null)
-            .SelectMany(x => x.Asset.Mcp!.EnvVars.Concat(x.Asset.Mcp!.HeaderEnvVars.Values))
+            .Select(x => x.Asset)
+            .Concat(importedMcp)
+            .SelectMany(x => x.Mcp!.EnvVars.Concat(x.Mcp.HeaderEnvVars.Values))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         if (envVars.Count > 0)
@@ -277,9 +297,17 @@ public static class CommandHelpers
             Output.Info($"Next step (mcp): set {string.Join(", ", envVars)} in your environment — values are never stored in provider configs.");
         }
 
-        if (scope == InstallScope.Project && applied.Any(x => x.Provider == ProviderName.Claude && x.Asset.Kind == AssetKind.Mcp))
+        if (scope == InstallScope.Project && applied.Any(x => x.Provider == ProviderName.Claude &&
+            (x.Asset.Kind == AssetKind.Mcp || x.Asset.Kind == AssetKind.Agents &&
+                new AgentDependencyResolver(loaded.Catalog).Resolve(x.Asset, x.Provider).Mcp.Count > 0)))
         {
             Output.Info("Next step (claude): Claude Code asks you to approve project .mcp.json servers on its next start — accept the prompt to activate them.");
+        }
+
+
+        foreach (var item in applied.Where(x => x.Provider == ProviderName.Copilot && x.Asset.Kind == AssetKind.Agents && scope == InstallScope.Project))
+        {
+            Output.Info($"Workflow import (copilot): imports:\n  - .github/agents/{item.Asset.Id}.agent.md");
         }
     }
 
@@ -288,12 +316,10 @@ public static class CommandHelpers
         if (settings.Force) return DriftAction.Overwrite;
         if (settings.KeepLocal) return DriftAction.Keep;
         if (!Output.CanPrompt || settings.Yes)
-        {
-            Output.Warning(
-                $"{item.Asset.Id} ({item.Provider.Display()}) has local changes — keeping them. " +
-                "Use --force to overwrite or --keep-local to silence this warning.");
-            return DriftAction.Keep;
-        }
+            throw new AgentPackException(
+                $"{item.Asset.Id} ({item.Provider.Display()}) requires a local-change decision.",
+                "Use --force to back up and overwrite or --keep-local to skip the complete affected agent transaction.",
+                ExitCodes.DriftOrConflict);
 
         return Prompts.ResolveDrift(item, scope, scopeRoot);
     }

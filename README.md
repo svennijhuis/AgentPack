@@ -2,7 +2,7 @@
 
 **One catalog of approved AI assets. Every developer. Every AI tool. One command.**
 
-`agentpack` is a .NET global tool that installs your organization's skills, hooks, MCP servers, instructions, rules, and prompts into **Claude Code, Codex, GitHub Copilot, and Cursor** — each in that product's own native format, so everything works out of the box.
+`agentpack` is a .NET global tool that installs your organization's agents, skills, hooks, MCP servers, instructions, rules, and prompts into **Claude Code, Codex, GitHub Copilot, and Cursor** — each in that product's own native format, so everything works out of the box.
 
 ```bash
 agentpack add
@@ -27,6 +27,7 @@ Everything works on all four providers unless the product itself has no such con
 
 | Kind | What it is | Claude | Codex | Copilot | Cursor |
 |---|---|:-:|:-:|:-:|:-:|
+| **agents** | native custom/subagents with automatic dependencies | ✓ | ✓ | ✓ | ✓ |
 | **skills** | agent skills (SKILL.md folders) | ✓ | ✓ | ✓ | ✓ |
 | **hooks** | pre/post tool-use scripts | ✓ | ✓ | ✓ | ✓ |
 | **mcp** | MCP server configs | ✓ | ✓ | ✓ | ✓ |
@@ -87,15 +88,15 @@ dotnet run --project src/AgentPack.Cli -- list
 dotnet run --project src/AgentPack.Cli -- add grill-me
 
 # Optional: install this checkout as your global `agentpack` command
-dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=0.2.0-dev.1
+dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=0.3.0-dev.1
 dotnet tool uninstall -g AgentPack
-dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 0.2.0-dev.1
+dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 0.3.0-dev.1
 ```
 
-If `dotnet tool uninstall` says the tool is not installed, continue with the install step. When you want to reinstall a newer local build, pack it with a new dev version such as `0.2.0-dev.2`, then run:
+If `dotnet tool uninstall` says the tool is not installed, continue with the install step. When you want to reinstall a newer local build, pack it with a new dev version such as `0.3.0-dev.2`, then run:
 
 ```bash
-dotnet tool update -g AgentPack --add-source ./artifacts/packages --version 0.2.0-dev.2 --allow-downgrade
+dotnet tool update -g AgentPack --add-source ./artifacts/packages --version 0.3.0-dev.2 --allow-downgrade
 ```
 
 Running the CLI from this repo only changes where the `agentpack` command comes from. The asset catalog is still the repo with `catalog.yaml` and `assets/`; if you run inside that catalog repo, agentpack auto-detects it.
@@ -106,6 +107,24 @@ Running the CLI from this repo only changes where the `agentpack` command comes 
 
 ```bash
 agentpack profile apply backend      # everything your team standardized on
+```
+
+### I want a native agent everywhere
+
+```bash
+agentpack add dotnet-upgrade --claude --codex --copilot --cursor
+agentpack add agent-governance-reviewer --claude --codex --copilot --cursor
+```
+
+That one request resolves the complete typed dependency graph. Imported instructions are composed privately into the generated agent, skills install into each provider's native skill directory, and MCP configuration stays agent-local except Cursor's inherited `.cursor/mcp.json` entry. Built-in `tools` configure provider capabilities; custom tools must be MCP assets. Nothing is installed for a generic `tools` asset.
+
+The tool names are portable capabilities, not strings copied blindly to every file. Claude and Copilot get native granular allowlists; Codex and Cursor get their supported coarse sandbox/read-only projection and otherwise inherit native tools. See [agent authoring](docs/agent-authoring.md) for the exact mapping and generated examples.
+
+Native targets are `.claude/agents/<id>.md`, `.codex/agents/<id>.toml`, `.github/agents/<id>.agent.md`, and `.cursor/agents/<id>.md` (or the corresponding user directories). A project Copilot agent is directly reusable by a GitHub Agentic Workflow:
+
+```yaml
+imports:
+  - .github/agents/dotnet-upgrade.agent.md
 ```
 
 ### I want to browse and pick
@@ -121,12 +140,25 @@ agentpack list                       # just look, install nothing
 
 Naming ids installs directly; a kind or group opens the checklist filtered to it.
 
+Groups are **hierarchical** — a top-level language plus optional `language/topic` subgroups. Filtering by a parent includes every subgroup; filter by a subgroup to narrow.
+
+| Command | Installs |
+|---|---|
+| `agentpack add -g csharp` | everything C# (language skills + shared skills + hooks) |
+| `agentpack add -g csharp/review` | just the C# review skills |
+| `agentpack add -g csharp/testing` | just the C# testing skills |
+| `agentpack list -g react` | browse all React assets |
+| `agentpack groups` | the full group tree with asset counts |
+
+Current top-level groups: `react`, `node`, `typescript`, `csharp`, `git`. Common subtopics: `/review`, `/testing`, `/api`, `/format`, `/workflow`.
+
 ### I want to stay up to date
 
 ```bash
 agentpack status                     # what's installed, what has updates
 agentpack upgrade                    # update (asks before touching your local edits)
 agentpack remove grill-me            # uninstall (backup kept)
+agentpack prune                      # preview clean orphaned automatic dependencies
 ```
 
 That's it. Providers are auto-detected from your repo (`.claude/`, `.cursor/`, `AGENTS.md`, ...); force them with `--claude --codex --copilot --cursor`. Inside a git repo installs are project-scoped; `--user` installs to your home directory instead.
@@ -134,6 +166,8 @@ That's it. Providers are auto-detected from your repo (`.claude/`, `.cursor/`, `
 ### It never surprises you
 
 - **Your local edits are safe.** If you changed an installed file, agentpack asks: overwrite, keep, show diff, or abort. Never silent.
+- **An agent is one transaction.** Its dependencies and native file are staged, syntax-checked, locked, and applied together; any failure restores provider files and the previous lock.
+- **Scripts must decide drift.** `--yes` confirms the plan but does not choose what to do with local edits; use `--force` or `--keep-local` (exit `3` otherwise).
 - **Your configs are safe.** Merging into `settings.json` / `mcp.json` / `config.toml` only adds entries — existing ones are never touched; a conflict is an error, not an overwrite.
 - **Everything is undoable.** Any file agentpack replaces is backed up to `.agentpack/backups/` first.
 - **It tells you the next step.** "Set GITHUB_TOKEN in your environment", "commit .github/hooks/", "approve the MCP server when Claude Code asks" — printed right after install.
@@ -146,6 +180,19 @@ That's it. Providers are auto-detected from your repo (`.claude/`, `.cursor/`, `
 agentpack new skills grill-me --group review
 # → assets/skills/grill-me/agentpack.yaml + content/SKILL.md
 ```
+
+Create an agent and declare its automatic dependencies without hand-writing YAML:
+
+```bash
+agentpack new agents dotnet-upgrade \
+  --description "Plans and implements safe .NET upgrades." \
+  --tool read --tool search --tool edit --tool execute --tool web \
+  --instruction dotnet-conventions \
+  --skill dependency-analysis \
+  --mcp microsoft-docs
+```
+
+AgentPack never pins a model in generated agent files. Imported or legacy model metadata is removed with a warning, so the user's session or workflow keeps its current/default model.
 
 Edit the content, open a PR. Done. The manifest is ~5 lines — everything derivable is derived (id and kind from the folder, checksums generated by CI):
 
@@ -165,11 +212,13 @@ agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@<comm
 
 Pinned to the exact commit you reviewed — never a moving branch. Installs verify the content hash; upstream changes only arrive through a new PR that a human re-reviews.
 
+The same command supports external agents, hooks, MCP, instructions, prompts, and Cursor rules. Each kind has a validated content contract; hook permissions and MCP tool inventories stay in reviewed AgentPack metadata. See [external-assets.md](docs/external-assets.md).
+
 ## For platform / security teams
 
 The catalog is a git repo. Control comes free with your existing workflow:
 
-- **Every change is a PR.** CI blocks anything invalid: `agentpack catalog validate`, `catalog lock --check`, `catalog verify-external`.
+- **Every change is a PR.** CI blocks anything invalid: `agentpack catalog validate`, `catalog lock --check`, `catalog verify-external`, and `catalog compile`.
 - **CODEOWNERS routes review** — e.g. `assets/hooks/**` and external sources to the security team (hooks execute code on dev machines).
 - **Kill switch:** set `status: blocked` on an asset; installs stop immediately.
 - **No secrets in the catalog, ever.** MCP env vars are names; each provider gets its own reference syntax; values stay in the user's shell.
@@ -179,6 +228,7 @@ The catalog is a git repo. Control comes free with your existing workflow:
 catalog.yaml            groups + team profiles
 catalog.lock.yaml       generated checksums (CI)
 assets/
+  agents/dotnet-upgrade/ agentpack.yaml + content/AGENT.md (or pinned external source)
   skills/grill-me/      agentpack.yaml + content/SKILL.md
   hooks/secret-scan/    agentpack.yaml + content/hook.sh
   mcp/github/           agentpack.yaml (mcp: section, no content needed)
@@ -190,11 +240,11 @@ assets/
 |---|---|
 | `add` / `plan` | install (interactive when no args) / dry-run |
 | `upgrade` / `outdated` | update installed assets / just report |
-| `remove` / `status` / `diff` | uninstall / overview / local-edit check |
+| `remove` / `prune` / `status` / `diff` | uninstall / clean orphans / overview / local-edit check |
 | `pin` / `unpin` | hold an asset at its version |
 | `new` / `import` | scaffold a local / external asset for a PR |
 | `profile list\|plan\|apply` | team bundles |
-| `catalog validate\|lock\|verify-external` | CI checks |
+| `catalog validate\|lock\|verify-external\|compile` | CI checks, including every native agent output |
 | `source add\|list\|sync` | use a remote catalog repo |
 | `groups` / `list` / `doctor` | discovery and diagnosis |
 
@@ -208,7 +258,7 @@ Diagrams for the whole system — install flow, PR flow, external pinning, state
 
 ```bash
 dotnet build     # warnings are errors
-dotnet test      # 112 tests: provider golden files, merge formats, CLI end-to-end
+dotnet test      # provider golden files, agent dependencies, rollback, merge formats, CLI end-to-end
 ```
 
-Docs: [how it works](docs/how-it-works.md) · [provider mapping](docs/provider-mapping.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md)
+Docs: [agent authoring](docs/agent-authoring.md) · [how it works](docs/how-it-works.md) · [provider mapping](docs/provider-mapping.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md)

@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: React Modern Patterns
+version: 1.0.0
+description: Idiomatic modern React — Server vs Client Components, the Rules of Hooks, composition over effects.
+groups: [react]
+tags: [react, frontend, patterns]
+owner: developer-platform
+status: recommended
+channel: stable

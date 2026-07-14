@@ -10,12 +10,14 @@ public static class CatalogLoader
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .WithTypeConverter(new SourceDtoConverter())
+        .WithTypeConverter(new AgentImportDtoConverter())
         .IgnoreUnmatchedProperties()
         .Build();
 
     private static readonly ISerializer Serializer = new SerializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .WithTypeConverter(new SourceDtoConverter())
+        .WithTypeConverter(new AgentImportDtoConverter())
         .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitEmptyCollections)
         .Build();
 

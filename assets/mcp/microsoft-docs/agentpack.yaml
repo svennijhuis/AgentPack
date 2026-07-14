@@ -1,0 +1,14 @@
+name: Microsoft Learn MCP
+version: 1.0.0
+description: Official Microsoft Learn search, article fetch, and code-sample search tools.
+groups: [engineering, backend]
+tags: [mcp, microsoft, documentation]
+providers: [claude, codex, copilot, cursor]
+owner: developer-platform
+status: recommended
+channel: stable
+mcp:
+  server: microsoft.docs.mcp
+  transport: http
+  url: https://learn.microsoft.com/api/mcp
+  tools: [microsoft_docs_search, microsoft_docs_fetch, microsoft_code_sample_search]

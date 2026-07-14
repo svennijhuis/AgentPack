@@ -72,10 +72,31 @@ public class ScopeLockTests
     }
 }
 
-public class PartialApplyTests
+public class TransactionalApplyTests
 {
     [Fact]
-    public void FailureMidApplyRecordsAlreadyAppliedItemsInLockfile()
+    public void ApplyStageFailureRestoresEarlierFilesAndLock()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var good = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Skills, "good");
+        var bad = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Skills, "bad");
+        var loaded = TestData.Loaded(paths.WorkingDirectory, good, bad);
+        var installer = new Installer(paths);
+        var goodItem = Assert.Single(installer.Plan(loaded, [good], [ProviderName.Claude], InstallScope.Project).Items);
+        var badItem = Assert.Single(installer.Plan(loaded, [bad], [ProviderName.Cursor], InstallScope.Project).Items);
+        Directory.CreateDirectory(Path.Combine(paths.WorkingDirectory, ".cursor"));
+        File.WriteAllText(Path.Combine(paths.WorkingDirectory, ".cursor", "skills"), "blocks directory creation");
+
+        Assert.Throws<AgentPackException>(() => installer.Apply([goodItem, badItem], loaded, InstallScope.Project, _ => DriftAction.Overwrite));
+
+        Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "skills", "good")));
+        Assert.Equal("blocks directory creation", File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".cursor", "skills")));
+        Assert.Empty(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
+    }
+
+    [Fact]
+    public void FailureDuringStagingLeavesNoFilesOrLockEntries()
     {
         using var temp = new TempDir();
         var paths = TestData.Paths(temp);
@@ -92,14 +113,13 @@ public class PartialApplyTests
             installer.Apply(plan.Items, loaded, InstallScope.Project, _ => DriftAction.Keep));
         Assert.Contains("broken", ex.Message);
 
-        // The successfully applied item is on disk AND in the lockfile.
-        Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "skills", "good", "SKILL.md")));
+        Assert.False(File.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "skills", "good", "SKILL.md")));
         var lockFile = JsonStore.Load<AgentPackLock>(paths.ProjectLockPath);
-        Assert.Equal("good", Assert.Single(lockFile.Entries).Id);
+        Assert.Empty(lockFile.Entries);
     }
 
     [Fact]
-    public void RerunAfterFailureSkipsCompletedItems()
+    public void RerunAfterFailureInstallsTheWholeTransaction()
     {
         using var temp = new TempDir();
         var paths = TestData.Paths(temp);
@@ -113,14 +133,14 @@ public class PartialApplyTests
             installer.Apply(installer.Plan(loaded, [good, broken], [ProviderName.Claude], InstallScope.Project).Items,
                 loaded, InstallScope.Project, _ => DriftAction.Keep));
 
-        // Fix the broken asset's content, rerun: 'good' is up to date, 'broken' installs.
+        // Fix the broken asset's content, then the complete transaction installs.
         var fixedBroken = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Skills, "broken");
         var loadedFixed = TestData.Loaded(paths.WorkingDirectory, good, fixedBroken);
         var results = installer.Apply(
             installer.Plan(loadedFixed, [good, fixedBroken], [ProviderName.Claude], InstallScope.Project).Items,
             loadedFixed, InstallScope.Project, _ => DriftAction.Keep);
 
-        Assert.Equal(ApplyOutcome.AlreadyUpToDate, results.Single(r => r.Item.Asset.Id == "good").Outcome);
+        Assert.Equal(ApplyOutcome.Installed, results.Single(r => r.Item.Asset.Id == "good").Outcome);
         Assert.Equal(ApplyOutcome.Installed, results.Single(r => r.Item.Asset.Id == "broken").Outcome);
         Assert.Equal(2, JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries.Count);
     }

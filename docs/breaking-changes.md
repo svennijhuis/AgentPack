@@ -1,5 +1,33 @@
 # Breaking Changes
 
+## External asset contracts
+
+- External hooks now require an explicit `hook:` manifest section. `agentpack import --kind hooks` scaffolds it, with optional `--hook-trigger`, `--hook-tool`, `--hook-command`, and `--hook-timeout` overrides.
+- External MCP used as an agent dependency requires typed `mcp:` metadata with an explicit `tools` inventory. Direct MCP imports may still use a root `mcp.json`.
+- Fetched external agents, skills, hooks, MCP, instructions, prompts, and rules are validated against their kind-specific content shape before caching or installation.
+- `agentpack import --kind tools|templates` now fails immediately because those kinds have no provider-native external installation contract.
+
+## 0.3.0 — native agents, dependency ownership, transactional drift
+
+### Catalog schema
+
+- `agents` is a first-class asset kind. Its `agent.imports.instructions`, `.skills`, and `.mcp` lists are typed references with optional semantic-version ranges.
+- Agent MCP imports require an explicit `mcp.tools` inventory. Generic `tools` assets are rejected; package custom tools as MCP.
+- External assets now fail validation unless both pinned and checksummed in `catalog.lock.yaml`. External agent frontmatter is stripped and cannot add undeclared dependencies.
+
+### Install lock and updates
+
+- Entries add `direct`, `requiredBy`, `renderFingerprint`, and `managedSnapshotPath`. The managed snapshot lets interactive diff show the last generated version, local version, and new candidate. Missing `direct` on an older lock entry is interpreted as `true`, so existing installs are never treated as disposable automatic dependencies.
+- Dependency checksums participate in an agent's render fingerprint. `outdated` can therefore report an agent even when its own version did not change.
+- Agent descriptions are now required. AgentPack no longer supports model overrides: imported frontmatter and legacy `agent.models` values are ignored with a warning and omitted from every generated file, which inherits the user's session or workflow model.
+- Removing an agent leaves shared automatic dependencies as tracked orphans. Use `agentpack prune` to preview and remove clean orphans; locally modified orphans are retained.
+
+### Drift and transactions
+
+- `--yes` no longer implies a local-change choice. Non-interactive drift exits `3` unless `--force` or `--keep-local` is explicit.
+- Keeping a locally modified generated agent skips its complete dependency closure. Existing unmanaged targets conflict unless byte-identical (adopt) or an explicit drift flag is supplied.
+- Apply is transactional: sources and generated files stage first, the lock is saved last, and any apply failure restores all affected files and the previous lock.
+
 ## 0.2.0 — schema simplification, typed CLI, bundles removed
 
 ### Catalog schema

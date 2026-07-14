@@ -74,6 +74,9 @@ public static class ContentHash
         return Convert.ToHexString(bytes[..12]).ToLowerInvariant();
     }
 
+    public static string ComputeText(string text) =>
+        "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
+
     private static void CopyFilePreservingMode(string source, string destination)
     {
         File.Copy(source, destination, overwrite: true);

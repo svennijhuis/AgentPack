@@ -50,7 +50,44 @@ mcp:
   transport: stdio                # stdio | http | sse
   command: github-mcp-server
   envVars: [GITHUB_TOKEN]         # names only, never values
+  tools: [search, get_issue]       # required when an agent imports this MCP
 ```
+
+## Author a native agent
+
+```bash
+agentpack new agents dotnet-upgrade \
+  --description "Plans and implements safe, evidence-based .NET upgrades." \
+  --tool read --tool search --tool edit --tool execute --tool web \
+  --instruction dotnet-conventions \
+  --skill dependency-analysis \
+  --mcp microsoft-docs
+```
+
+The top-level `description` is required for agents and is rendered into every native format. The typed agent-specific contract is:
+
+```yaml
+agent:
+  tools: [read, search, edit, execute, web]
+  imports:
+    instructions:
+      - id: dotnet-conventions
+        version: ">=1.0.0 <2.0.0"
+    skills:
+      - id: dependency-analysis
+        version: ">=1.2.0 <2.0.0"
+    mcp:
+      - id: microsoft-docs
+        version: ">=1.0.0 <2.0.0"
+```
+
+Use scalar shorthand when no compatibility constraint is needed: `skills: [dependency-analysis]`. The effective catalog has one version of each id; a range validates that version and never downloads arbitrary historical releases. Every import resolves to exactly one required kind (`instructions`, `skills`, or `mcp`), must support every agent provider, and cannot be blocked or deprecated. Duplicate, missing, ambiguous, wrong-kind, provider-limited, and incompatible references fail validation with a stable `agent.dependency.*` code.
+
+`agent.tools` names portable built-in capabilities (`read`, `search`, `edit`, `execute`, `web`, `agent`); it does not install executables. Claude and Copilot support exact granular allowlists. Codex and Cursor receive their native coarse sandbox/read-only projection and otherwise inherit provider tools. Package custom tools as MCP assets and declare the exact `mcp.tools` inventory. The reserved generic `tools` asset kind has no installation contract and fails validation.
+
+Models are intentionally not part of the agent contract. Compilation removes model metadata found in imported frontmatter or the legacy `agent.models` mapping and reports a warning. Every generated agent therefore uses the model already selected by the user, session, or workflow. See [agent-authoring.md](agent-authoring.md) for a complete manifest, source prompt, capability matrix, and all four generated formats.
+
+Imported instructions are private composition inputs, not installs into `CLAUDE.md`, `AGENTS.md`, or `.github/instructions`. External agent frontmatter is discarded; only dependencies in this manifest are trusted.
 
 ## Add an external asset
 
@@ -61,6 +98,7 @@ agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@<comm
 - The `@<ref>` **must** be a full commit SHA or an immutable tag. Branches are rejected — you are approving exact content, not a moving target.
 - Read the upstream content at that ref before opening the PR; the PR review approves that exact code.
 - Record the upstream license with `--license MIT` when known; validation warns when missing.
+- Hook triggers/commands and MCP server/tool inventories remain typed AgentPack metadata; they are never inferred from untrusted upstream frontmatter. See [external-assets.md](external-assets.md) for every supported external kind and its fetched-content contract.
 
 ## Versioning
 
@@ -83,6 +121,8 @@ jobs:
       - run: agentpack catalog validate
       - run: agentpack catalog lock --check          # fails when checksums are stale
       - run: agentpack catalog verify-external       # fetches pinned refs, verifies hashes
+      - run: agentpack catalog compile               # resolves and parses all native agent outputs
+      - run: dotnet test
 ```
 
 On merge to main, run `agentpack catalog lock` and commit the refreshed `catalog.lock.yaml` (or require authors to run it locally — `--check` keeps them honest).
@@ -98,4 +138,4 @@ Hooks execute code on developer machines and any external source change pulls th
 
 ## Team overlays
 
-A consuming repo can add team-local assets without touching the org catalog: put `.agentpack/catalog.yaml` and `.agentpack/assets/<kind>/<id>/` in the repo. Overlay entries with the same id override the org catalog for that repo. See [team-overlays.md](team-overlays.md).
+A consuming repo can add team-local assets without touching the org catalog: put `.agentpack/catalog.yaml` and `.agentpack/assets/<kind>/<id>/` in the repo. Overlay entries with the same id override the org catalog for that repo, making a deliberate customization a typed, reviewable effective asset instead of an unverifiable edit to a generated file. See [team-overlays.md](team-overlays.md).

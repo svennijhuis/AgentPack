@@ -52,6 +52,33 @@ public sealed record Asset
     public required AssetSource Source { get; init; }
     public McpServer? Mcp { get; init; }
     public HookSpec? Hook { get; init; }
+    public AgentSpec? Agent { get; init; }
+}
+
+public sealed record AgentSpec
+{
+    /// <summary>Null means inherit every provider tool. An explicit list is always non-empty.</summary>
+    public IReadOnlyList<AgentTool>? Tools { get; init; }
+    public AgentImports Imports { get; init; } = new();
+}
+
+public sealed record AgentImports
+{
+    public IReadOnlyList<AgentAssetReference> Instructions { get; init; } = [];
+    public IReadOnlyList<AgentAssetReference> Skills { get; init; } = [];
+    public IReadOnlyList<AgentAssetReference> Mcp { get; init; } = [];
+
+    public IEnumerable<(AgentAssetReference Reference, AssetKind Kind)> All()
+    {
+        foreach (var reference in Instructions) yield return (reference, AssetKind.Instructions);
+        foreach (var reference in Skills) yield return (reference, AssetKind.Skills);
+        foreach (var reference in Mcp) yield return (reference, AssetKind.Mcp);
+    }
+}
+
+public sealed record AgentAssetReference(string Id, SemVersionRange? VersionRange)
+{
+    public override string ToString() => VersionRange is null ? Id : $"{Id} ({VersionRange})";
 }
 
 /// <summary>

@@ -98,6 +98,31 @@ public sealed class CatalogVerifyExternalCommand : Command
     }
 }
 
+public sealed class CatalogCompileCommand : Command
+{
+    public override int Execute(CommandContext context)
+    {
+        var session = new CliSession();
+        var loaded = session.LoadCatalog();
+        var report = new CatalogValidator().Validate(loaded, verifyChecksums: true);
+        if (!report.IsValid)
+        {
+            Output.Report(report);
+            return ExitCodes.ValidationFailed;
+        }
+
+        var result = new CatalogCompiler(session.Paths).Compile(loaded);
+        foreach (var warning in result.Warnings)
+            Output.Warning($"[{warning.Code}] {warning.Message}");
+        Output.Success($"Compiled and syntax-checked {result.Outputs.Count} native agent output(s).");
+        Output.Table(["Agent", "Provider", "Scope", "Checksum"], result.Outputs.Select(x => new[]
+        {
+            x.Id, x.Provider.Display(), x.Scope.ToString().ToLowerInvariant(), x.Checksum
+        }));
+        return 0;
+    }
+}
+
 public sealed class ProfileListCommand : Command
 {
     public override int Execute(CommandContext context)
@@ -148,7 +173,7 @@ public class ProfileApplyCommand : Command<ProfileApplyCommand.Settings>
         }
 
         var providers = profile.Providers.Count > 0 ? profile.Providers : settings.ResolveProviders(session.Paths);
-        var plan = new Installer(session.Paths).Plan(loaded, assets, providers, scope);
+        var plan = new Installer(session.Paths).Plan(loaded, assets, providers, scope, $"profile:{profile.Id}");
         return CommandHelpers.RenderAndApply(session, loaded, plan, scope, settings, $"Profile '{profile.Id}'", Apply);
     }
 
@@ -170,7 +195,7 @@ public class ProfileApplyCommand : Command<ProfileApplyCommand.Settings>
 
         foreach (var asset in catalog.Assets)
         {
-            if (asset.Groups.Any(g => profile.Groups.Contains(g, StringComparer.OrdinalIgnoreCase)) && seen.Add(asset.Id))
+            if (asset.Groups.Any(g => profile.Groups.Any(f => GroupMatch.Matches(f, g))) && seen.Add(asset.Id))
             {
                 selected.Add(asset);
             }

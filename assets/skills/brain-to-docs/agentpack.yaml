@@ -1,0 +1,13 @@
+# External asset: content lives upstream, pinned to a reviewed commit.
+name: Brain to Docs
+version: 1.0.0
+description: Extract project vision, decisions, and preferences into README + ADRs via a Q&A loop.
+groups: [react/workflow, node/workflow, typescript/workflow, csharp/workflow]
+tags: [external, docs]
+owner: developer-platform
+status: recommended
+channel: stable
+source:
+  url: https://github.com/davidondrej/skills/tree/main/skills/thinking-and-docs/brain-to-docs
+  ref: 66860fb790fa212ff2b6f0da223a33cffa0a8eff
+  license: MIT

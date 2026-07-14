@@ -62,6 +62,70 @@ public class AssetDto
     public SourceDto? Source { get; set; }
     public McpDto? Mcp { get; set; }
     public HookDto? Hook { get; set; }
+    public AgentDto? Agent { get; set; }
+}
+
+public sealed class AgentDto
+{
+    /// <summary>Null means omitted/inherit; an empty YAML list is rejected by mapping.</summary>
+    public List<string>? Tools { get; set; }
+    /// <summary>Accepted only so loading can emit a helpful ignored/removed warning.</summary>
+    public Dictionary<string, string> Models { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public AgentImportsDto Imports { get; set; } = new();
+}
+
+public sealed class AgentImportsDto
+{
+    public List<AgentImportDto> Instructions { get; set; } = [];
+    public List<AgentImportDto> Skills { get; set; } = [];
+    public List<AgentImportDto> Mcp { get; set; } = [];
+    public List<AgentImportDto> Agents { get; set; } = [];
+    public List<AgentImportDto> Hooks { get; set; } = [];
+    public List<AgentImportDto> Rules { get; set; } = [];
+    public List<AgentImportDto> Prompts { get; set; } = [];
+    public List<AgentImportDto> Tools { get; set; } = [];
+    public List<AgentImportDto> Templates { get; set; } = [];
+}
+
+public sealed class AgentImportDto
+{
+    public string Id { get; set; } = "";
+    public string? Version { get; set; }
+}
+
+public sealed class AgentImportDtoConverter : IYamlTypeConverter
+{
+    public bool Accepts(Type type) => type == typeof(AgentImportDto);
+
+    public object ReadYaml(IParser parser, Type type, ObjectDeserializer rootDeserializer)
+    {
+        if (parser.Accept<Scalar>(out _))
+        {
+            return new AgentImportDto { Id = parser.Consume<Scalar>().Value };
+        }
+
+        var map = (Dictionary<object, object?>?)rootDeserializer(typeof(Dictionary<object, object?>)) ?? [];
+        return new AgentImportDto
+        {
+            Id = Value(map, "id") ?? "",
+            Version = Value(map, "version")
+        };
+    }
+
+    public void WriteYaml(IEmitter emitter, object? value, Type type, ObjectSerializer serializer)
+    {
+        var reference = (AgentImportDto?)value ?? new AgentImportDto();
+        if (string.IsNullOrWhiteSpace(reference.Version))
+        {
+            emitter.Emit(new Scalar(reference.Id));
+            return;
+        }
+
+        serializer(new Dictionary<string, string> { ["id"] = reference.Id, ["version"] = reference.Version! });
+    }
+
+    private static string? Value(Dictionary<object, object?> map, string key) =>
+        map.FirstOrDefault(x => string.Equals(x.Key?.ToString(), key, StringComparison.OrdinalIgnoreCase)).Value?.ToString();
 }
 
 /// <summary>

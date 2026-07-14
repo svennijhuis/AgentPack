@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: C# ASP.NET Core
+version: 1.0.0
+description: Build ASP.NET Core web APIs — minimal APIs or controllers, DI lifetimes, EF Core, xUnit integration tests.
+groups: [csharp/api]
+tags: [csharp, dotnet, aspnetcore, api]
+owner: developer-platform
+status: recommended
+channel: stable

@@ -18,6 +18,9 @@ public sealed class CodexAdapter : IProviderAdapter
     {
         return asset.Kind switch
         {
+            AssetKind.Agents => Supported(Name, asset,
+                Path.Combine(".codex", "agents", asset.Id + ".toml"), InstallMode.RenderAgent, isFileTarget: true),
+
             AssetKind.Skills => Supported(Name, asset, Path.Combine(".agents", "skills", asset.Id), InstallMode.CopyTree),
 
             AssetKind.Mcp => Supported(Name, asset, Path.Combine(".codex", "config.toml"), InstallMode.MergeMcp),

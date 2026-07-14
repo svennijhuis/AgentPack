@@ -34,6 +34,9 @@ app.Configure(config =>
         .WithAlias("uninstall")
         .WithDescription("Remove installed assets (shared provider configs keep user entries).");
 
+    config.AddCommand<PruneCommand>("prune")
+        .WithDescription("Preview and remove clean orphaned automatic dependencies.");
+
     config.AddCommand<UpgradeCommand>("upgrade")
         .WithAlias("update")
         .WithDescription("Upgrade installed assets to the catalog versions.");
@@ -59,6 +62,14 @@ app.Configure(config =>
     config.AddCommand<DoctorCommand>("doctor")
         .WithDescription("Show environment, detected providers, and configuration.");
 
+    config.AddBranch("agent", agent =>
+    {
+        agent.SetDescription("Inspect native agent compatibility and authoring choices.");
+        agent.AddCommand<AgentExplainCommand>("explain")
+            .WithDescription("Explain tool enforcement and model behavior for every provider.")
+            .WithExample("explain", "agent-governance-reviewer");
+    });
+
     config.AddBranch("catalog", catalog =>
     {
         catalog.SetDescription("Catalog maintenance (validate, lock, verify).");
@@ -68,6 +79,8 @@ app.Configure(config =>
             .WithDescription("Generate catalog.lock.yaml with content checksums (run in CI).");
         catalog.AddCommand<CatalogVerifyExternalCommand>("verify-external")
             .WithDescription("Fetch every external asset at its pinned ref and verify checksums.");
+        catalog.AddCommand<CatalogCompileCommand>("compile")
+            .WithDescription("Resolve dependencies and syntax-check every native agent output.");
     });
 
     config.AddBranch("profile", profile =>

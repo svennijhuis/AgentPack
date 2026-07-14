@@ -14,7 +14,7 @@ The org catalog is the trusted source of truth. Everything below assumes the cat
 
   Hooks execute code on developer machines; external source changes pull third-party code. Both go to security.
 
-- **CI on every PR:** `agentpack catalog validate` + `agentpack catalog lock --check` + `agentpack catalog verify-external`. A PR cannot merge with broken references, stale checksums, or unpinned external refs.
+- **CI on every PR:** `agentpack catalog validate` + `agentpack catalog lock --check` + `agentpack catalog verify-external` + `agentpack catalog compile`. A PR cannot merge with broken references, stale checksums, unpinned external refs, or invalid native agent output.
 
 ## Asset lifecycle
 

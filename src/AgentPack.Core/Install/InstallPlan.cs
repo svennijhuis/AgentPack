@@ -23,7 +23,10 @@ public enum InstallState
     Missing,
 
     /// <summary>Something already exists at the target path that agentpack did not install.</summary>
-    UnmanagedPresent
+    UnmanagedPresent,
+
+    /// <summary>An unmanaged target is byte-for-byte identical and can be adopted without rewriting.</summary>
+    Adoptable
 }
 
 public static class InstallStates
@@ -37,6 +40,7 @@ public static class InstallStates
         InstallState.LocalChanges => "local changes",
         InstallState.Missing => "missing",
         InstallState.UnmanagedPresent => "unmanaged file present",
+        InstallState.Adoptable => "adopt identical file",
         _ => state.ToString()
     };
 }
@@ -48,7 +52,11 @@ public sealed record InstallPlanItem(
     string TargetPath,
     InstallTarget Target,
     InstallState State,
-    LockEntry? Existing);
+    LockEntry? Existing,
+    bool Direct = true,
+    IReadOnlyList<string>? RequiredBy = null,
+    string? RenderFingerprint = null,
+    string? StagedCandidatePath = null);
 
 /// <summary>An asset × provider combination that cannot be installed, with the honest reason.</summary>
 public sealed record SkippedInstall(Asset Asset, ProviderName Provider, string Reason);
@@ -66,11 +74,14 @@ public enum ApplyOutcome
     Installed,
     Updated,
     KeptLocalChanges,
+    SkippedTransaction,
     SkippedPinned,
     AlreadyUpToDate
 }
 
 public sealed record ApplyResult(InstallPlanItem Item, ApplyOutcome Outcome);
+
+public sealed record PruneResult(IReadOnlyList<LockEntry> Clean, IReadOnlyList<LockEntry> Modified);
 
 public static class SemVersionExtensions
 {

@@ -25,6 +25,24 @@ groups:
 
 Groups have **no install semantics** beyond filtering. An asset lists the groups it belongs to in its own manifest.
 
+### Hierarchical groups (`language/topic`)
+
+Group labels are hierarchical. A top-level id (`csharp`) may have slash-delimited subgroups (`csharp/review`, `csharp/testing`). Filtering matches a label exactly **or** as a path prefix at a `/` boundary:
+
+```bash
+agentpack add -g csharp          # csharp AND every csharp/* subgroup
+agentpack add -g csharp/review   # only the csharp/review subgroup
+agentpack groups                 # the tree, with an asset count per label
+```
+
+Only the **top-level** id is declared in `catalog.yaml`; subgroups are implicit — any `csharp/<topic>` an asset tags itself with is valid as long as `csharp` is a declared group. This keeps `catalog.yaml` small while letting a busy language be sliced by topic. An asset that applies to several languages simply lists the subgroup under each, e.g. a cross-stack review skill uses `[react/review, node/review, typescript/review, csharp/review]`.
+
+| Label on an asset | Selected by |
+|---|---|
+| `csharp` | `-g csharp` |
+| `csharp/review` | `-g csharp` and `-g csharp/review` |
+| `csharp/api` | `-g csharp` and `-g csharp/api` |
+
 ## Profiles — what a team installs
 
 A profile is the installable unit: "backend team gets these assets on these providers."
@@ -45,6 +63,8 @@ agentpack profile apply backend   # install it
 ```
 
 Onboarding a new team member is one command. Profile changes are catalog PRs, so a team's toolkit is versioned and reviewed like everything else.
+
+Profile installs are recorded as ownership edges such as `profile:backend`, not as direct requests. If a selected asset is an agent, its automatic dependencies also receive their normal `agent:<id>` edges. Shared dependencies remain installed while any direct request, agent, or profile still owns them. Removing an agent removes only its agent edge; unreferenced automatic dependencies become visible in `agentpack prune` and are not deleted until that separate, previewable operation runs.
 
 ## Which one do I want?
 

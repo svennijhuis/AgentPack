@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: C# Modern
+version: 1.0.0
+description: Idiomatic modern C# — records, pattern matching, nullable reference types, async, expressive LINQ.
+groups: [csharp]
+tags: [csharp, dotnet, patterns]
+owner: developer-platform
+status: recommended
+channel: stable

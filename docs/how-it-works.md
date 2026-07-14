@@ -15,7 +15,7 @@ flowchart LR
     end
 
     subgraph ext["External repos (GitHub, Azure DevOps)"]
-        EXT["skills pinned to<br/>reviewed commit SHA"]
+        EXT["agents and skills pinned to<br/>reviewed commit SHA"]
     end
 
     subgraph dev["Developer machine"]
@@ -61,10 +61,32 @@ sequenceDiagram
         Dev-->>CLI: decision
     end
 
-    CLI->>Prov: backup, then copy tree or merge JSON/TOML
-    CLI->>Lock: record version + checksums
+    CLI->>CLI: resolve typed dependency graph + stage every candidate
+    CLI->>CLI: parse generated YAML/TOML + verify hashes
+    CLI->>Prov: lock scope, backup, then apply complete transaction
+    CLI->>Lock: save only after every item succeeds
     CLI-->>Dev: results + follow-up steps (env vars to set, files to commit)
+
+    alt any apply step fails
+        CLI->>Prov: restore every backup
+        CLI->>Lock: restore previous lock
+    end
 ```
+
+For an agent, resolution produces a provider-specific closure: private instruction inputs, native skill installs, agent-local MCP (or Cursor's inherited shared MCP), then the generated native agent. Shared dependencies are planned once. All drift, pins, unmanaged targets, environment requirements, and merge conflicts are discovered before writing.
+
+## Agent dependency graph
+
+```mermaid
+flowchart LR
+    A["agent: dotnet-upgrade"] --> I["instruction: dotnet-conventions<br/>embedded only"]
+    A --> S["skill: dependency-analysis<br/>native skill folder"]
+    A --> M["MCP: microsoft-docs<br/>agent-local except Cursor"]
+    I & S & M --> R["provider renderer"]
+    R --> CL["Claude Markdown"] & CX["Codex TOML"] & CP["Copilot agent.md"] & CU["Cursor Markdown"]
+```
+
+The graph is typed before planning. Version ranges check the catalog's one effective version. Wrong kinds, incompatible versions/providers, blocked dependencies, missing MCP tool inventories, and unpinned or unchecked external sources stop compilation with a stable error and corrective action.
 
 ## Contributing: everything is a PR
 
@@ -123,7 +145,9 @@ The lockfile stores a checksum of what was installed. Every plan compares disk a
 stateDiagram-v2
     [*] --> Available: in catalog, not installed
     Available --> Installed: add
+    Available --> Installed: adopt byte-identical unmanaged target
     Installed --> UpdateAvailable: catalog version bumped
+    Installed --> UpdateAvailable: agent dependency fingerprint changed
     Installed --> LocalChanges: user edits installed copy
     Installed --> Missing: file deleted on disk
     UpdateAvailable --> Installed: upgrade
@@ -134,6 +158,22 @@ stateDiagram-v2
     Missing --> Installed: add (reinstall)
     Installed --> [*]: remove (backup kept)
 ```
+
+`--yes` confirms a non-interactive plan but never decides drift. A conflict exits `3` until the caller passes `--force` (backup and overwrite) or `--keep-local` (skip the complete affected agent closure). Managed snapshots let the interactive diff compare the last generated version, current local version, and staged candidate. AgentPack does not three-way merge prompts, skill content, or frontmatter. A deliberate customization belongs in `.agentpack/catalog.yaml` plus `.agentpack/assets/...`, where it remains typed and reviewable.
+
+## Ownership, removal, and pruning
+
+Every lock entry records whether it was directly requested and why an automatic install exists, for example `agent:dotnet-upgrade`, `agent:api-builder`, or `profile:backend`. Removing one agent drops only its ownership edge. Shared dependencies remain; newly unreferenced automatic installs become orphans. `agentpack prune` previews them and removes only clean orphans. Locally modified orphans are never automatically deleted, and `remove --keep-local` unregisters a generated agent while leaving its file unmanaged.
+
+Agent-local MCP and embedded instructions disappear with the generated agent because they have no separate installed target. Cursor-global MCP dependencies retain ownership edges and are pruned only when no agent or direct request needs them.
+
+## Render fingerprints and updates
+
+An agent lock entry fingerprints the canonical agent source, normalized manifest and portable tools, every imported id/version/checksum, MCP configuration/tool inventory, provider, and scope. Model metadata is excluded because compilation always strips it and inherits the current/default model. A dependency content change therefore makes the agent outdated without an agent version bump. A plan reports local edits before rebuilding; if both local changes and a dependency-driven rebuild exist, the user must keep or overwrite the generated agent first.
+
+## Guarantee boundary
+
+AgentPack guarantees typed dependency resolution, source integrity, provider compatibility checks, deterministic generated syntax, transactional application, backups, rollback, ownership tracking, and local-change detection. `doctor`, compile, and post-install diagnostics make the remaining runtime requirements explicit. AgentPack cannot guarantee that an external MCP endpoint is online, environment values are actually set, a future provider release retains today's format, or a model chooses to invoke a skill.
 
 ## What lands where
 

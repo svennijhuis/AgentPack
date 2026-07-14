@@ -4,6 +4,32 @@ namespace AgentPack.Tests;
 
 public class CatalogValidatorTests
 {
+    [Fact]
+    public void HookTriggerMustSupportEveryTargetProvider()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var hook = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "notify",
+            hook: new HookSpec { Trigger = HookTrigger.Notification, Command = "hook.sh" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, hook);
+
+        var report = new CatalogValidator().Validate(loaded, verifyChecksums: false);
+
+        Assert.Contains(report.Issues, x => x.Code == "asset.hook.provider.incompatible");
+    }
+
+    [Fact]
+    public void HookRequiresTypedMetadata()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var hook = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard");
+
+        var report = new CatalogValidator().Validate(TestData.Loaded(paths.WorkingDirectory, hook), verifyChecksums: false);
+
+        Assert.Contains(report.Issues, x => x.Code == "asset.hook.missing");
+    }
+
     private const string Sha = "9d2f1ae187231d8199c64b5b762e1bdf2244733d";
 
     [Theory]
@@ -35,7 +61,7 @@ public class CatalogValidatorTests
     {
         using var temp = new TempDir();
         var asset = TestData.Asset(AssetKind.Skills, "tagged",
-            source: new AssetSource.External("https://github.com/o/r.git", "v1.0.0", "skills/x", null, "MIT"));
+            source: new AssetSource.External("https://github.com/o/r.git", "v1.0.0", "skills/x", "sha256:" + new string('0', 64), "MIT"));
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset), verifyChecksums: false);
 
         Assert.True(report.IsValid);
@@ -125,5 +151,19 @@ public class CatalogValidatorTests
         var report = new CatalogValidator().Validate(loaded, verifyChecksums: false);
 
         Assert.Contains(report.Issues, x => x.Code == "profile.asset.unknown" && x.Severity == IssueSeverity.Error);
+    }
+
+    [Fact]
+    public void AgentRequiresDescription()
+    {
+        using var temp = new TempDir();
+        var agent = TestData.WriteLocalAsset(temp.Path, AssetKind.Agents, "reviewer", agent: new AgentSpec()) with
+        {
+            Description = ""
+        };
+
+        var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, agent), verifyChecksums: false);
+
+        Assert.Contains(report.Issues, x => x.Code == "agent.description.missing" && x.Severity == IssueSeverity.Error);
     }
 }

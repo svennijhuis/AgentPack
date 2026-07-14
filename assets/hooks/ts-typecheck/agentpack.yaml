@@ -1,0 +1,13 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: TypeScript Typecheck Gate
+version: 1.0.0
+description: Runs tsc --noEmit once when the agent finishes and surfaces any type errors. Advisory, non-blocking; no-op without tsconfig or tsc.
+groups: [react/format, node/format, typescript/format]
+tags: [typecheck, gate]
+owner: developer-platform
+status: recommended
+channel: stable
+hook:
+  trigger: stop
+  command: hook.sh
+  timeoutSec: 120

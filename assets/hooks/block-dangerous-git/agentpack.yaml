@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Block Dangerous Git
+version: 1.0.0
+description: Blocks destructive git commands (force push, reset --hard, clean -f, branch -D, overwriting checkout/restore) before they run.
+groups: [git]
+tags: [guardrail, policy, git]
+owner: developer-platform
+status: recommended
+channel: stable
+hook:
+  trigger: preToolUse
+  tool: Bash
+  command: hook.sh
+  timeoutSec: 15

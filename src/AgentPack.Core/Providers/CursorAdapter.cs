@@ -17,6 +17,9 @@ public sealed class CursorAdapter : IProviderAdapter
     {
         return asset.Kind switch
         {
+            AssetKind.Agents => Supported(Name, asset,
+                Path.Combine(".cursor", "agents", asset.Id + ".md"), InstallMode.RenderAgent, isFileTarget: true),
+
             AssetKind.Skills => Supported(Name, asset, Path.Combine(".cursor", "skills", asset.Id), InstallMode.CopyTree),
 
             AssetKind.Rules => Supported(Name, asset, Path.Combine(".cursor", "rules", asset.Id + ".mdc"), InstallMode.CopyTree, isFileTarget: true),

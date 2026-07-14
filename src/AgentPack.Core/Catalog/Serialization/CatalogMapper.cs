@@ -66,6 +66,7 @@ public static class CatalogMapper
         var source = MapSource(dto.Source, context, issues);
         var mcp = MapMcp(dto, context, issues);
         var hook = MapHook(dto, context, issues);
+        var agent = MapAgent(dto, context, issues);
 
         if (issues.Count(x => x.Severity == IssueSeverity.Error) > before) return null;
 
@@ -84,8 +85,100 @@ public static class CatalogMapper
             Channel = channel,
             Source = source!,
             Mcp = mcp,
-            Hook = hook
+            Hook = hook,
+            Agent = agent
         };
+    }
+
+    private static AgentSpec? MapAgent(AssetDto dto, string context, List<CatalogIssue> issues)
+    {
+        if (dto.Agent is null) return null;
+        var imports = dto.Agent.Imports ?? new AgentImportsDto();
+        var unsupportedImports = new (string Name, IReadOnlyList<AgentImportDto> Values)[]
+        {
+            ("agents", imports.Agents), ("hooks", imports.Hooks),
+            ("rules", imports.Rules), ("prompts", imports.Prompts),
+            ("tools", imports.Tools), ("templates", imports.Templates)
+        };
+        foreach (var (name, values) in unsupportedImports.Where(x => x.Values.Count > 0))
+        {
+            Error(issues, "agent.import.unsupported",
+                $"{context}: agent.imports.{name} is not supported in schema v1. Only instructions, skills, and mcp can be imported.");
+        }
+        if (dto.Agent.Tools is { Count: 0 })
+        {
+            Error(issues, "agent.tools.empty", $"{context}: agent.tools cannot be empty; omit it to inherit provider tools.");
+        }
+
+        List<AgentTool>? tools = null;
+        if (dto.Agent.Tools is { Count: > 0 })
+        {
+            tools = [];
+            foreach (var value in dto.Agent.Tools.SelectMany(SplitList))
+            {
+                try
+                {
+                    var tool = EnumParsers.ParseAgentTool(value, context);
+                    if (!tools.Contains(tool)) tools.Add(tool);
+                    else Error(issues, "agent.tools.duplicate", $"{context}: agent tool '{value}' is listed more than once.");
+                }
+                catch (AgentPackException ex)
+                {
+                    Error(issues, "agent.tool.invalid", ex.Message);
+                }
+            }
+        }
+
+        if (dto.Agent.Models is { Count: > 0 })
+        {
+            Warning(issues, "agent.model.ignored",
+                $"{context}: agent.models is ignored and never rendered. AgentPack always uses the model selected by the user, session, or workflow; remove the models mapping when convenient.");
+        }
+
+        return new AgentSpec
+        {
+            Tools = tools,
+            Imports = new AgentImports
+            {
+                Instructions = MapAgentImports(imports.Instructions, context, "instructions", issues),
+                Skills = MapAgentImports(imports.Skills, context, "skills", issues),
+                Mcp = MapAgentImports(imports.Mcp, context, "mcp", issues)
+            }
+        };
+    }
+
+    private static IReadOnlyList<AgentAssetReference> MapAgentImports(
+        IReadOnlyList<AgentImportDto> values, string context, string field, List<CatalogIssue> issues)
+    {
+        var result = new List<AgentAssetReference>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value.Id) || !IdPattern.IsMatch(value.Id))
+            {
+                Error(issues, "agent.import.id.invalid", $"{context}: agent.imports.{field} contains invalid id '{value.Id}'.");
+                continue;
+            }
+
+            if (!seen.Add(value.Id))
+            {
+                Error(issues, "agent.import.duplicate", $"{context}: agent.imports.{field} contains duplicate '{value.Id}'.");
+                continue;
+            }
+
+            SemVersionRange? range = null;
+            if (!string.IsNullOrWhiteSpace(value.Version) && !SemVersionRange.TryParse(value.Version, out range))
+            {
+                Error(issues, "agent.dependency.version.invalid",
+                    $"{context}: agent.imports.{field} '{value.Id}' has invalid version range '{value.Version}'. " +
+                    "Use an exact version or comparisons such as '>=1.0.0 <2.0.0'.");
+                continue;
+            }
+
+            result.Add(new AgentAssetReference(value.Id, range));
+        }
+
+        return result;
     }
 
     /// <summary>An omitted or empty providers list means the asset is available for every provider.</summary>
@@ -302,6 +395,9 @@ public static class CatalogMapper
 
     private static void Error(List<CatalogIssue> issues, string code, string message) =>
         issues.Add(new CatalogIssue(IssueSeverity.Error, code, message));
+
+    private static void Warning(List<CatalogIssue> issues, string code, string message) =>
+        issues.Add(new CatalogIssue(IssueSeverity.Warning, code, message));
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }

@@ -1,0 +1,13 @@
+# External asset: content lives upstream, pinned to a reviewed commit.
+name: Code Review
+version: 1.0.0
+description: Review a branch on Standards and Spec axes with parallel sub-agents that report separately.
+groups: [react/review, node/review, typescript/review, csharp/review]
+tags: [external, review, quality]
+owner: developer-platform
+status: recommended
+channel: stable
+source:
+  url: https://github.com/mattpocock/skills/tree/main/skills/engineering/code-review
+  ref: 66898f60e8c744e269f8ce06c2b2b99ce7660d5f
+  license: MIT

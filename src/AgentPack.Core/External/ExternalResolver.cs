@@ -23,6 +23,7 @@ public sealed class ExternalResolver
             var cachedHash = ContentHash.Compute(finalPath);
             if (resolved.Checksum is null || cachedHash.Equals(resolved.Checksum, StringComparison.OrdinalIgnoreCase))
             {
+                ExternalAssetContract.Validate(asset, finalPath);
                 return finalPath;
             }
         }
@@ -68,11 +69,21 @@ public sealed class ExternalResolver
         var actual = ContentHash.Compute(finalPath);
         if (resolved.Checksum is not null && !actual.Equals(resolved.Checksum, StringComparison.OrdinalIgnoreCase))
         {
-            Directory.Delete(finalPath, recursive: true);
+            DeleteExisting(finalPath);
             throw new AgentPackException(
                 $"External checksum mismatch for '{asset.Id}': expected {resolved.Checksum}, got {actual}.",
                 "The upstream content changed under the pinned ref, or the lock entry is stale. Re-review the upstream and rerun 'agentpack catalog lock'.",
                 ExitCodes.DriftOrConflict);
+        }
+
+        try
+        {
+            ExternalAssetContract.Validate(asset, finalPath);
+        }
+        catch
+        {
+            DeleteExisting(finalPath);
+            throw;
         }
 
         return finalPath;
@@ -130,6 +141,12 @@ public sealed class ExternalResolver
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
 
     private static string Escape(string value) => "\"" + value.Replace("\"", "\\\"") + "\"";
+
+    private static void DeleteExisting(string path)
+    {
+        if (File.Exists(path)) File.Delete(path);
+        else if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+    }
 }
 
 /// <summary>Resolves any asset's content to a local path (catalog folder or external cache).</summary>

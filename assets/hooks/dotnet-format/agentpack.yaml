@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Dotnet Format
+version: 1.0.0
+description: Runs dotnet format on edited C# files after each write. No-op when the .NET SDK is not installed.
+groups: [csharp/format]
+tags: [format, dotnet]
+owner: developer-platform
+status: recommended
+channel: stable
+hook:
+  trigger: postToolUse
+  tool: "Write|Edit"
+  command: hook.sh
+  timeoutSec: 60

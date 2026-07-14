@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Prettier Format
+version: 1.0.0
+description: Formats edited JS/TS/JSON/CSS/MD files with Prettier after each write. No-op when Prettier is not installed.
+groups: [react/format, node/format, typescript/format]
+tags: [format, frontend]
+owner: developer-platform
+status: recommended
+channel: stable
+hook:
+  trigger: postToolUse
+  tool: "Write|Edit"
+  command: hook.sh
+  timeoutSec: 30

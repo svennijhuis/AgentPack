@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Node Service Patterns
+version: 1.0.0
+description: Structure Node HTTP services — layered modules, edge validation, centralized errors, graceful shutdown.
+groups: [node/api]
+tags: [node, backend, service]
+owner: developer-platform
+status: recommended
+channel: stable

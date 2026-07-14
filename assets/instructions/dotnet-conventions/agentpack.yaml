@@ -1,0 +1,9 @@
+name: .NET Conventions
+version: 1.0.0
+description: Repository-safe conventions for .NET builds, migrations, and validation.
+groups: [engineering, backend]
+tags: [dotnet, conventions]
+providers: [claude, codex, copilot, cursor]
+owner: developer-platform
+status: recommended
+channel: stable

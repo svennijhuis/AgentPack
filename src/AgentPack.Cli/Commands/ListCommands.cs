@@ -10,7 +10,7 @@ public sealed class ListCommand : Command<ListCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "[kind]")]
-        [Description("Filter by kind (skills, hooks, mcp, tools, instructions, rules, prompts, templates) or 'all'.")]
+        [Description("Filter by kind (agents, skills, hooks, mcp, instructions, rules, prompts, templates) or 'all'.")]
         public string? Kind { get; set; }
 
         [CommandOption("-g|--group <GROUP>")]
@@ -64,12 +64,29 @@ public sealed class GroupsCommand : Command
     {
         var session = new CliSession();
         var loaded = session.LoadCatalog();
-        Output.Table(
-            ["ID", "Name", "Status", "ReplacedBy", "RemoveAfter"],
-            loaded.Catalog.Groups.Select(x => new[]
-            {
-                x.Id, x.Name, x.Status.ToString().ToLowerInvariant(), x.ReplacedBy ?? "", x.RemoveAfter ?? ""
-            }));
+        var catalog = loaded.Catalog;
+
+        int Count(string label) => catalog.Assets.Count(a => a.Groups.Any(g => GroupMatch.Matches(label, g)));
+
+        var rows = new List<string[]>();
+        foreach (var group in catalog.Groups)
+        {
+            var status = group.Status == GroupStatus.Deprecated
+                ? $"deprecated -> {group.ReplacedBy}"
+                : "";
+            rows.Add([group.Id, group.Name, Count(group.Id).ToString(), status]);
+
+            // Subgroups are implicit: any 'id/xxx' label found on an asset.
+            var subgroups = catalog.Assets
+                .SelectMany(a => a.Groups)
+                .Where(g => g.StartsWith(group.Id + "/", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g, StringComparer.Ordinal);
+            foreach (var sub in subgroups)
+                rows.Add([$"  {sub}", "", Count(sub).ToString(), ""]);
+        }
+
+        Output.Table(["Group", "Name", "Assets", "Status"], rows);
         return 0;
     }
 }
@@ -98,7 +115,9 @@ public sealed class StatusCommand : Command<StatusCommand.Settings>
                 return new[]
                 {
                     entry.Id, entry.Kind.Display(), entry.Provider.Display(),
-                    entry.Version, latest, entry.Pinned ? "yes" : "no", state
+                    entry.Version, latest, entry.Pinned ? "yes" : "no",
+                    state + (entry.Direct ? " (direct)" : entry.RequiredBy.Count > 0
+                        ? $" ({string.Join(",", entry.RequiredBy)})" : " (orphan)")
                 };
             }));
         return 0;
@@ -152,6 +171,29 @@ public sealed class DoctorCommand : Command
     {
         var session = new CliSession();
         var detected = ProviderRegistry.Detect(session.Paths.WorkingDirectory);
+        var missingEnv = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var loaded = session.LoadCatalog();
+            var assets = loaded.Catalog.Assets.ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
+            var entries = JsonStore.Load<AgentPackLock>(session.Paths.ProjectLockPath).Entries
+                .Concat(JsonStore.Load<AgentPackLock>(session.Paths.UserLockPath).Entries);
+            foreach (var entry in entries)
+            {
+                if (!assets.TryGetValue(entry.Id, out var asset)) continue;
+                var mcpAssets = asset.Kind == AssetKind.Agents
+                    ? new AgentDependencyResolver(loaded.Catalog).Resolve(asset, entry.Provider).Mcp
+                    : asset.Mcp is null ? [] : new[] { asset };
+                foreach (var variable in mcpAssets.SelectMany(x => x.Mcp!.EnvVars.Concat(x.Mcp.HeaderEnvVars.Values)))
+                {
+                    if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(variable))) missingEnv.Add(variable);
+                }
+            }
+        }
+        catch (AgentPackException)
+        {
+            // Doctor remains useful before a catalog has been configured.
+        }
         Output.Table(
             ["Check", "Value"],
             new[]
@@ -161,6 +203,7 @@ public sealed class DoctorCommand : Command
                 ["Git repository", CliSession.IsGitRepo(session.Paths.WorkingDirectory) ? "yes" : "no"],
                 ["Detected providers", detected.Count > 0 ? string.Join(", ", detected.Select(ProviderNames.Display)) : "(none)"],
                 ["Catalog sources", session.Sources.LoadConfig().Sources.Count.ToString()],
+                ["Missing installed MCP env vars", missingEnv.Count == 0 ? "(none)" : string.Join(", ", missingEnv)],
                 ["Default scope", CliSession.IsGitRepo(session.Paths.WorkingDirectory) ? "project" : "user"]
             });
         return 0;

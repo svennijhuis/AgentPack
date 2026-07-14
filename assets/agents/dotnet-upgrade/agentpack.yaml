@@ -1,0 +1,25 @@
+name: .NET Upgrade
+version: 1.0.0
+description: Plans and implements safe, evidence-based upgrades of .NET applications.
+groups: [engineering, backend]
+tags: [dotnet, migration, upgrade, agent]
+providers: [claude, codex, copilot, cursor]
+owner: developer-platform
+status: experimental
+channel: beta
+agent:
+  tools: [read, search, edit, execute, web]
+  imports:
+    instructions:
+      - id: dotnet-conventions
+        version: ">=1.0.0 <2.0.0"
+    skills:
+      - id: dependency-analysis
+        version: ">=1.0.0 <2.0.0"
+    mcp:
+      - id: microsoft-docs
+        version: ">=1.0.0 <2.0.0"
+source:
+  url: https://github.com/github/awesome-copilot/blob/main/agents/dotnet-upgrade.agent.md
+  ref: 0aaced533251f5b86c69dfbc5e55db74c4b4d1af
+  license: MIT

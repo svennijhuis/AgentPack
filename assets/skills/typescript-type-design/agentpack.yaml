@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: TypeScript Type Design
+version: 1.0.0
+description: Design reusable types — constrained generics, utility types, branded types, inference-first APIs.
+groups: [typescript]
+tags: [typescript, types, design]
+owner: developer-platform
+status: recommended
+channel: stable

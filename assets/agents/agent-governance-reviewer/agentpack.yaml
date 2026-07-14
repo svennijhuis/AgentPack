@@ -1,0 +1,19 @@
+name: Agent Governance Reviewer
+version: 1.0.0
+description: >-
+  AI agent governance expert that reviews code for safety issues, missing
+  governance controls, and helps implement policy enforcement, trust scoring,
+  and audit trails in agent systems.
+groups: [engineering, security, review]
+tags: [agents, governance, safety, security, audit]
+providers: [claude, codex, copilot, cursor]
+owner: developer-platform
+status: experimental
+channel: beta
+agent:
+  tools: [read, search, execute]
+  imports: {}
+source:
+  url: https://github.com/github/awesome-copilot/blob/main/agents/agent-governance-reviewer.agent.md
+  ref: 0aaced533251f5b86c69dfbc5e55db74c4b4d1af
+  license: MIT

@@ -2,6 +2,7 @@ namespace AgentPack.Core;
 
 public enum AssetKind
 {
+    Agents,
     Skills,
     Hooks,
     Mcp,
@@ -10,6 +11,16 @@ public enum AssetKind
     Rules,
     Prompts,
     Templates
+}
+
+public enum AgentTool
+{
+    Read,
+    Search,
+    Edit,
+    Execute,
+    Web,
+    Agent
 }
 
 public enum AssetStatus
@@ -86,6 +97,9 @@ public static class AssetKinds
 
 public static class EnumParsers
 {
+    public static AgentTool ParseAgentTool(string value, string context)
+        => ParseOrThrow<AgentTool>(value, default, context, "agent tool");
+
     public static AssetStatus ParseStatus(string? value, string context)
         => ParseOrThrow<AssetStatus>(value, AssetStatus.Recommended, context, "status");
 

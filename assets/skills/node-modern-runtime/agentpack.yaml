@@ -1,0 +1,9 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: Node Modern Runtime
+version: 1.0.0
+description: Modern Node.js — ESM, async and streams, the built-in test runner, disciplined errors, env config.
+groups: [node]
+tags: [node, backend, runtime]
+owner: developer-platform
+status: recommended
+channel: stable

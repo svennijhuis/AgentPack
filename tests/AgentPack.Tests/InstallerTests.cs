@@ -41,8 +41,8 @@ public class InstallerTests
 
         var plan = new Installer(paths).Plan(loaded, [asset], ProviderNames.All, InstallScope.Project);
 
-        Assert.Single(plan.Items); // cursor only
-        Assert.Equal(3, plan.Skipped.Count); // claude + codex + copilot, with reasons
+        Assert.Equal(2, plan.Items.Count); // claude + cursor
+        Assert.Equal(2, plan.Skipped.Count); // codex + copilot, with reasons
         Assert.All(plan.Skipped, skip => Assert.False(string.IsNullOrWhiteSpace(skip.Reason)));
     }
 
@@ -80,13 +80,14 @@ public class InstallerTests
         installer.Apply(installer.Plan(loaded, [asset], [ProviderName.Copilot, ProviderName.Claude], InstallScope.Project).Items,
             loaded, InstallScope.Project, _ => DriftAction.Keep);
 
-        installer.Remove(kind: null, ["guard"], providers: null, InstallScope.Project);
+        installer.Remove(kind: null, ["guard"], providers: null, InstallScope.Project, loaded: loaded);
 
         // Copilot's per-asset file and content are gone; Claude's shared settings.json survives.
         Assert.False(File.Exists(Path.Combine(paths.WorkingDirectory, ".github", "hooks", "guard.json")));
         Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".github", "hooks", "guard")));
         Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "hooks", "guard")));
         Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "settings.json")));
+        Assert.DoesNotContain("guard", File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".claude", "settings.json")));
         Assert.Empty(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
     }
 
@@ -175,12 +176,60 @@ public class InstallerTests
         var installer = new Installer(paths);
         installer.Apply(installer.Plan(loaded, [skill, mcp], [ProviderName.Claude], InstallScope.Project).Items, loaded, InstallScope.Project, _ => DriftAction.Keep);
 
-        var removed = installer.Remove(kind: null, ["demo", "github"], providers: null, InstallScope.Project);
+        var removed = installer.Remove(kind: null, ["demo", "github"], providers: null, InstallScope.Project, loaded: loaded);
 
         Assert.Equal(2, removed.Count);
         Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".claude", "skills", "demo")));
         Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".mcp.json")), "shared MCP config must not be deleted");
+        Assert.DoesNotContain("github", File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".mcp.json")));
         Assert.Empty(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
+    }
+
+    [Fact]
+    public void RemoveRefusesToDeleteLocallyModifiedMcpEntry()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var mcp = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Mcp, "github",
+            mcp: new McpServer { Server = "github", Command = "srv" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, mcp);
+        var installer = new Installer(paths);
+        installer.Apply(installer.Plan(loaded, [mcp], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+
+        var target = Path.Combine(paths.WorkingDirectory, ".mcp.json");
+        File.WriteAllText(target, File.ReadAllText(target).Replace("\"srv\"", "\"locally-changed\"", StringComparison.Ordinal));
+
+        var ex = Assert.Throws<AgentPackException>(() =>
+            installer.Remove(null, ["github"], null, InstallScope.Project, loaded: loaded));
+        Assert.Equal(ExitCodes.DriftOrConflict, ex.ExitCode);
+        Assert.Contains("locally-changed", File.ReadAllText(target));
+    }
+
+    [Fact]
+    public void SharedHooksTrackOnlyTheirOwnRegistration()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var first = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "first-hook",
+            hook: new HookSpec { Trigger = HookTrigger.PreToolUse, Command = "hook.sh" });
+        var second = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "second-hook",
+            hook: new HookSpec { Trigger = HookTrigger.PostToolUse, Command = "hook.sh" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, first, second);
+        var installer = new Installer(paths);
+
+        installer.Apply(installer.Plan(loaded, [first], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+        installer.Apply(installer.Plan(loaded, [second], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+
+        var firstAgain = Assert.Single(installer.Plan(loaded, [first], [ProviderName.Claude], InstallScope.Project).Items);
+        Assert.Equal(InstallState.Installed, firstAgain.State);
+
+        installer.Remove(null, ["first-hook"], null, InstallScope.Project, loaded: loaded);
+        var config = File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".claude", "settings.json"));
+        Assert.DoesNotContain("first-hook", config);
+        Assert.Contains("second-hook", config);
     }
 
     [Fact]
@@ -250,5 +299,107 @@ public class InstallerTests
         Assert.True(File.Exists(target));
         Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, "CLAUDE.md", "org-instructions.md")));
         Assert.Equal("# Org rules\n", File.ReadAllText(target));
+    }
+
+    [Fact]
+    public void ExistingAgentPackGitIgnoreBackfillsEveryRequiredEntry()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var metadata = Path.Combine(paths.WorkingDirectory, ".agentpack");
+        Directory.CreateDirectory(metadata);
+        var gitIgnore = Path.Combine(metadata, ".gitignore");
+        File.WriteAllText(gitIgnore, "custom-cache/\n.lock\n");
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Skills, "demo");
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+
+        installer.Apply(installer.Plan(loaded, [asset], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+
+        var lines = File.ReadAllLines(gitIgnore);
+        Assert.Contains("custom-cache/", lines);
+        Assert.Contains(".lock", lines);
+        Assert.Contains("backups/", lines);
+        Assert.Equal(1, lines.Count(x => x == ".lock"));
+    }
+
+    [Fact]
+    public void HookExecutableEditsAreReportedAsLocalChanges()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var hook = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard",
+            hook: new HookSpec { Trigger = HookTrigger.PreToolUse, Command = "hook.sh" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, hook);
+        var installer = new Installer(paths);
+        installer.Apply(installer.Plan(loaded, [hook], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+
+        var entry = Assert.Single(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
+        Assert.NotNull(entry.SupportChecksum);
+        Assert.Equal(InstallState.Installed, installer.InspectInstalled(entry, loaded, InstallScope.Project));
+
+        var installedScript = Path.Combine(paths.WorkingDirectory, ".claude", "hooks", "guard", "hook.sh");
+        File.AppendAllText(installedScript, "# local edit\n");
+
+        Assert.Equal(InstallState.LocalChanges, installer.InspectInstalled(entry, loaded, InstallScope.Project));
+        Assert.Equal(InstallState.LocalChanges,
+            Assert.Single(installer.Plan(loaded, [hook], [ProviderName.Claude], InstallScope.Project).Items).State);
+    }
+
+    [Fact]
+    public void SameNamedProviderFilesUsePathQualifiedBackupLocations()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var hook = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard",
+            hook: new HookSpec { Trigger = HookTrigger.PreToolUse, Command = "hook.sh" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, hook);
+        var installer = new Installer(paths);
+        var providers = new[] { ProviderName.Codex, ProviderName.Cursor };
+        installer.Apply(installer.Plan(loaded, [hook], providers, InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+
+        var targets = new[]
+        {
+            Path.Combine(paths.WorkingDirectory, ".codex", "hooks.json"),
+            Path.Combine(paths.WorkingDirectory, ".cursor", "hooks.json")
+        };
+        foreach (var target in targets)
+            File.WriteAllText(target, File.ReadAllText(target).Replace("30", "31", StringComparison.Ordinal));
+
+        installer.Apply(installer.Plan(loaded, [hook], providers, InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+
+        var backups = Path.Combine(paths.WorkingDirectory, ".agentpack", "backups");
+        foreach (var target in targets)
+        {
+            var expectedKey = ContentHash.ShortKey(Path.GetFullPath(target));
+            Assert.Contains(Directory.EnumerateFiles(backups, "hooks.json", SearchOption.AllDirectories),
+                file => Path.GetFileName(Path.GetDirectoryName(file)) == expectedKey);
+        }
+    }
+
+    [Fact]
+    public void MissingMcpCatalogMetadataFailsClosedForDiffAndRemove()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var mcp = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Mcp, "github",
+            mcp: new McpServer { Server = "github", Command = "server" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, mcp);
+        var installer = new Installer(paths);
+        installer.Apply(installer.Plan(loaded, [mcp], [ProviderName.Claude], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Overwrite);
+        var entry = Assert.Single(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
+        var catalogWithoutAsset = TestData.Loaded(paths.WorkingDirectory);
+
+        Assert.Equal(InstallState.LocalChanges,
+            installer.InspectInstalled(entry, catalogWithoutAsset, InstallScope.Project));
+        var ex = Assert.Throws<AgentPackException>(() =>
+            installer.Remove(null, ["github"], null, InstallScope.Project, loaded: catalogWithoutAsset));
+        Assert.Equal(ExitCodes.DriftOrConflict, ex.ExitCode);
+        Assert.Contains("github", File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".mcp.json")));
     }
 }

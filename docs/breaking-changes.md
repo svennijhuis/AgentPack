@@ -17,7 +17,7 @@
 
 ### Install lock and updates
 
-- Entries add `direct`, `requiredBy`, `renderFingerprint`, and `managedSnapshotPath`. The managed snapshot lets interactive diff show the last generated version, local version, and new candidate. Missing `direct` on an older lock entry is interpreted as `true`, so existing installs are never treated as disposable automatic dependencies.
+- Entries add `direct`, `requiredBy`, `renderFingerprint`, `managedSnapshotPath`, and an optional hook `supportChecksum`. The managed snapshot lets interactive diff show the last generated version, local version, and new candidate; the support checksum detects edits to installed hook executables as well as registrations. Missing fields in older lock entries remain backward-compatible, and missing `direct` is interpreted as `true`.
 - Dependency checksums participate in an agent's render fingerprint. `outdated` can therefore report an agent even when its own version did not change.
 - Agent descriptions are now required. AgentPack no longer supports model overrides: imported frontmatter and legacy `agent.models` values are ignored with a warning and omitted from every generated file, which inherits the user's session or workflow model.
 - Removing an agent leaves shared automatic dependencies as tracked orphans. Use `agentpack prune` to preview and remove clean orphans; locally modified orphans are retained.
@@ -54,9 +54,11 @@
   Claude `.claude/settings.json`, Codex `.codex/hooks.json` (Claude-style, PascalCase events),
   Copilot one file per hook at `.github/hooks/<id>.json` (`version: 1`, `bash`/`powershell`, `timeoutSec`),
   Cursor `.cursor/hooks.json` (`version: 1`, camelCase events, `timeout`).
+- Copilot pre-tool hooks receive a generated compatibility wrapper: portable exit code `2` is translated to Copilot's native structured deny response because Copilot otherwise treats `2` as a warning.
 - Codex rules (`.codex/rules/*.rules`) removed — invented path; use instructions (AGENTS.md).
-- Copilot project MCP now merges into `.vscode/mcp.json` (root key `servers`) instead of writing a manual payload under `.agentpack/copilot-mcp/`.
+- Copilot project MCP now merges into `.github/mcp.json` (root key `mcpServers`) instead of writing a manual payload under `.agentpack/copilot-mcp/`. This supersedes the earlier VS Code-specific `.vscode/mcp.json` mapping.
 - Cursor skills moved from `.agents/skills/` to `.cursor/skills/`.
+- Cursor file-based rules and commands are project-scoped; user rules/commands are managed in Cursor rather than written to undocumented home-directory paths.
 - Claude prompts now install as slash commands (`.claude/commands/<id>.md`).
 
 ### Lockfiles

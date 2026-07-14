@@ -54,7 +54,7 @@ public sealed class ExternalResolver
 
         Ensure(ProcessRunner.Run("git", $"checkout --force {Escape(resolved.Ref)}", repoCache), asset, $"checkout ref '{resolved.Ref}'");
 
-        var sourcePath = Path.GetFullPath(Path.Combine(repoCache, resolved.Path));
+        var sourcePath = PathSafety.ResolveUnderRoot(repoCache, resolved.Path, $"External asset '{asset.Id}'");
         if (!File.Exists(sourcePath) && !Directory.Exists(sourcePath))
         {
             throw new AgentPackException(
@@ -163,7 +163,7 @@ public sealed class AssetResolver
     {
         return asset.Source switch
         {
-            AssetSource.Local local => Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath)),
+            AssetSource.Local local => PathSafety.ResolveUnderRoot(loaded.RootFor(asset), local.RelativePath, $"Local asset '{asset.Id}'"),
             AssetSource.External => _externalResolver.ResolveToCache(ExternalResolver.WithEffectiveChecksum(loaded, asset)),
             _ => throw new AgentPackException($"Asset '{asset.Id}' has an unknown source type.")
         };
@@ -174,7 +174,7 @@ public sealed class AssetResolver
     {
         return asset.Source switch
         {
-            AssetSource.Local local => Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath)),
+            AssetSource.Local local => PathSafety.ResolveUnderRoot(loaded.RootFor(asset), local.RelativePath, $"Local asset '{asset.Id}'"),
             AssetSource.External => _externalResolver.TryResolveFromCache(ExternalResolver.WithEffectiveChecksum(loaded, asset)),
             _ => null
         };

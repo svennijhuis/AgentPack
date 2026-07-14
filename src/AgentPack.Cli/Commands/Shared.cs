@@ -272,6 +272,12 @@ public static class CommandHelpers
                         "Copilot CLI picks it up immediately; the Copilot cloud coding agent reads hooks from the default branch only.");
         }
 
+        if (scope == InstallScope.Project && applied.Any(x =>
+            x.Provider == ProviderName.Copilot && x.Asset.Kind == AssetKind.Mcp))
+        {
+            Output.Info("Copilot CLI loads .github/mcp.json for this workspace. GitHub.com cloud agents and code review require the same server to be enabled in repository Settings > Copilot > MCP servers.");
+        }
+
         var importedMcp = applied
             .Where(x => x.Asset.Kind == AssetKind.Agents)
             .SelectMany(x => new AgentDependencyResolver(loaded.Catalog).Resolve(x.Asset, x.Provider).Mcp);
@@ -303,7 +309,6 @@ public static class CommandHelpers
         {
             Output.Info("Next step (claude): Claude Code asks you to approve project .mcp.json servers on its next start — accept the prompt to activate them.");
         }
-
 
         foreach (var item in applied.Where(x => x.Provider == ProviderName.Copilot && x.Asset.Kind == AssetKind.Agents && scope == InstallScope.Project))
         {

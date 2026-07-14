@@ -27,7 +27,8 @@ public sealed class CatalogLockWriter
             {
                 case AssetSource.Local local:
                     {
-                        var contentPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
+                        var contentPath = PathSafety.ResolveUnderRoot(
+                            loaded.RootFor(asset), local.RelativePath, $"Local asset '{asset.Id}'");
                         if (!File.Exists(contentPath) && !Directory.Exists(contentPath))
                         {
                             messages.Add($"{asset.Id}: local content missing at {local.RelativePath} — skipped.");

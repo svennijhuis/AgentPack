@@ -66,4 +66,15 @@ public class ExternalSourceParserTests
         var (_, pinned) = ExternalSourceParser.SplitShorthand($"https://github.com/o/r/tree/{Sha}/path");
         Assert.Equal(Sha, pinned);
     }
+
+    [Theory]
+    [InlineData("../outside")]
+    [InlineData("nested/../../outside")]
+    public void ExternalPathsCannotEscapeCheckout(string path)
+    {
+        var source = new AssetSource.External("https://github.com/example/repo", Sha, path, null, null);
+        var ex = Assert.Throws<AgentPackException>(() => ExternalSourceParser.Resolve(source));
+        Assert.Equal(ExitCodes.ValidationFailed, ex.ExitCode);
+        Assert.Contains("escapes", ex.Message);
+    }
 }

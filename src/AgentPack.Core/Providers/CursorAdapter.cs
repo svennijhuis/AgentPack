@@ -22,7 +22,9 @@ public sealed class CursorAdapter : IProviderAdapter
 
             AssetKind.Skills => Supported(Name, asset, Path.Combine(".cursor", "skills", asset.Id), InstallMode.CopyTree),
 
-            AssetKind.Rules => Supported(Name, asset, Path.Combine(".cursor", "rules", asset.Id + ".mdc"), InstallMode.CopyTree, isFileTarget: true),
+            AssetKind.Rules => userScope
+                ? Unsupported("Cursor user rules are managed in the app; file-based .mdc rules are project-scoped.")
+                : Supported(Name, asset, Path.Combine(".cursor", "rules", asset.Id + ".mdc"), InstallMode.CopyTree, isFileTarget: true),
 
             AssetKind.Hooks => Supported(Name, asset, Path.Combine(".cursor", "hooks.json"), InstallMode.MergeHook),
 
@@ -32,7 +34,9 @@ public sealed class CursorAdapter : IProviderAdapter
                 ? Unsupported("Cursor user-scope instructions are managed in the app (User Rules), not on disk.")
                 : Supported(Name, asset, "AGENTS.md", InstallMode.CopyTree, isFileTarget: true),
 
-            AssetKind.Prompts => Supported(Name, asset, Path.Combine(".cursor", "commands", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
+            AssetKind.Prompts => userScope
+                ? Unsupported("Cursor documents file-based commands at project scope; user commands are managed in Cursor.")
+                : Supported(Name, asset, Path.Combine(".cursor", "commands", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
 
             AssetKind.Tools => Unsupported("Cursor has no generic tools directory."),
             AssetKind.Templates => Unsupported("Cursor has no templates directory."),

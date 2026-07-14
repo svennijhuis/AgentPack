@@ -28,17 +28,6 @@
 - Skills scaffold `content/SKILL.md`, `content/references/`, and `content/examples/`.
 - MCP and hook assets install through provider-native config writers instead of copied placeholder folders.
 
-## Still Not Good Enough
+## Subsequent Status
 
-- The CLI table is plain text, not yet a rich checkbox wizard.
-- Interactive conflict prompts are still minimal.
-- Project folders, solution, namespaces, package id, tool command, and home directory now use AgentPack naming.
-- `verify-external` verifies reachability and path existence, but it does not yet persist a generated checksum back into the manifest.
-
-## Recommended Next Fixes
-
-1. Add a Spectre.Console picker for `agentpack add skills`.
-2. Add external checksum refresh output for `verify-external`.
-3. Rename internal projects/namespaces to `AgentPack.*`.
-4. Add richer remove support for individual MCP/hook entries inside shared provider config.
-5. Add CI sample YAML for Azure DevOps.
+The original follow-up list is now largely complete: the CLI has Spectre.Console pickers and conflict prompts, projects and namespaces use `AgentPack.*`, checksums live in the generated catalog lock, and removal edits only AgentPack-owned MCP and hook fragments inside shared provider configuration. Current behavior and remaining product-level limitations are documented in [provider-mapping.md](provider-mapping.md).

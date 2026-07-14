@@ -136,10 +136,10 @@ public sealed class DiffCommand : Command<DiffCommand.Settings>
     public override int Execute(CommandContext context, Settings settings)
     {
         var session = new CliSession();
+        var loaded = session.LoadCatalog();
         var scope = settings.ResolveScope(session.Paths);
         var lockFile = JsonStore.Load<AgentPackLock>(session.Paths.GetLockPath(scope));
         var installer = new Installer(session.Paths);
-        var root = installer.ScopeRoot(scope);
 
         var matches = lockFile.Entries.Where(x => x.Id.Equals(settings.Id, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 0)
@@ -148,21 +148,26 @@ public sealed class DiffCommand : Command<DiffCommand.Settings>
             return 0;
         }
 
+        var inspected = matches.Select(entry =>
+        {
+            var state = installer.InspectInstalled(entry, loaded, scope);
+            var label = state switch
+            {
+                InstallState.Missing => "missing",
+                InstallState.LocalChanges => "modified locally",
+                _ => "clean"
+            };
+            return (Entry: entry, State: state, Label: label);
+        }).ToList();
+
         Output.Table(
             ["ID", "Provider", "Target", "State"],
-            matches.Select(entry =>
-            {
-                var installedPath = Installer.ResolveLockPath(entry.Path, root);
-                var exists = File.Exists(installedPath) || Directory.Exists(installedPath);
-                var state = !exists
-                    ? "missing"
-                    : ContentHash.Compute(installedPath).Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase)
-                        ? "clean"
-                        : "modified locally";
-                return new[] { entry.Id, entry.Provider.Display(), entry.Path, state };
-            }));
-        return 0;
+            inspected.Select(x => new[] { x.Entry.Id, x.Entry.Provider.Display(), x.Entry.Path, x.Label }));
+        return ExitCodeFor(inspected.Select(x => x.State));
     }
+
+    public static int ExitCodeFor(IEnumerable<InstallState> states) =>
+        states.All(x => x == InstallState.Installed) ? ExitCodes.Ok : ExitCodes.DriftOrConflict;
 }
 
 public sealed class DoctorCommand : Command

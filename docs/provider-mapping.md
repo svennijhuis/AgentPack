@@ -16,7 +16,7 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 | mcp | `.mcp.json` | `~/.claude.json` | JSON merge under `mcpServers` |
 | instructions | `CLAUDE.md` | `~/.claude/CLAUDE.md` | single file |
 | prompts | `.claude/commands/<id>.md` | `~/.claude/commands/<id>.md` | single file (slash command) |
-| rules | — use instructions | — | unsupported |
+| rules | `.claude/rules/<id>.md` | `~/.claude/rules/<id>.md` | single rule file; supports native `paths` frontmatter when supplied by the asset |
 
 ## Codex
 
@@ -27,7 +27,7 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 | mcp | `.codex/config.toml` | `~/.codex/config.toml` | TOML merge, `[mcp_servers.<name>]` sections |
 | hooks | `.codex/hooks.json` + `.codex/hooks/<id>/` | `~/.codex/hooks.json` + `~/.codex/hooks/<id>/` | JSON merge — Claude-style structure (PascalCase events, `matcher`, `timeout`); see [Codex hooks docs](https://developers.openai.com/codex/hooks) |
 | instructions | `AGENTS.md` | `~/.codex/AGENTS.md` | single file |
-| prompts | `.codex/prompts/<id>.md` | `~/.codex/prompts/<id>.md` | single file (custom prompt) |
+| prompts | — use a skill | `~/.codex/prompts/<id>.md` | user-only custom prompt (deprecated by Codex; skills are preferred) |
 | rules | — use instructions | — | unsupported |
 
 ## GitHub Copilot
@@ -36,9 +36,9 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 |---|---|---|---|
 | agents | `.github/agents/<id>.agent.md` | `~/.copilot/agents/<id>.agent.md` | generated Markdown; project file is directly importable by Agentic Workflows |
 | skills | `.github/skills/<id>/` | `~/.copilot/skills/<id>/` | copy tree (VS Code agent skills / Copilot CLI) |
-| mcp | `.vscode/mcp.json` — root key **`servers`** | `~/.copilot/mcp-config.json` — root key `mcpServers` | JSON merge |
+| mcp | `.github/mcp.json` | `~/.copilot/mcp-config.json` | JSON merge under `mcpServers`; Copilot CLI workspace/user config |
 | hooks | `.github/hooks/<id>.json` + `.github/hooks/<id>/` | `~/.copilot/hooks/<id>.json` + `~/.copilot/hooks/<id>/` | one JSON file per hook (`version: 1`, camelCase events, `bash`/`powershell` commands, `timeoutSec`); a `hook.ps1` twin next to `hook.sh` is registered automatically for Windows; see [Copilot CLI hooks docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks) |
-| instructions | `.github/instructions/<id>.instructions.md` | — managed in the editor | single file |
+| instructions | `.github/copilot-instructions.md` | `~/.copilot/copilot-instructions.md` | repository-wide / Copilot CLI user instructions |
 | prompts | `.github/prompts/<id>.prompt.md` | — managed in the editor | single file |
 | rules | — use instructions | — | unsupported |
 
@@ -48,11 +48,11 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 |---|---|---|---|
 | agents | `.cursor/agents/<id>.md` | `~/.cursor/agents/<id>.md` | generated Markdown; subagent inherits MCP from `.cursor/mcp.json` |
 | skills | `.cursor/skills/<id>/` | `~/.cursor/skills/<id>/` | copy tree |
-| rules | `.cursor/rules/<id>.mdc` | `~/.cursor/rules/<id>.mdc` | single file |
+| rules | `.cursor/rules/<id>.mdc` | — managed in the app (User Rules) | single project rule file |
 | hooks | `.cursor/hooks.json` + `.cursor/hooks/<id>/` | `~/.cursor/hooks.json` + `~/.cursor/hooks/<id>/` | JSON merge (`version: 1`, event arrays) |
 | mcp | `.cursor/mcp.json` | `~/.cursor/mcp.json` | JSON merge under `mcpServers` |
 | instructions | `AGENTS.md` | — managed in the app (User Rules) | single file |
-| prompts | `.cursor/commands/<id>.md` | `~/.cursor/commands/<id>.md` | single file |
+| prompts | `.cursor/commands/<id>.md` | — managed in Cursor | single project command file |
 
 ## Agent dependency rendering
 
@@ -97,12 +97,12 @@ Secrets never enter the catalog: MCP env vars are declared **by name** in the ma
 | Target | File | Env reference |
 |---|---|---|
 | Claude Code | `.mcp.json` / `~/.claude.json` | `"TOKEN": "${TOKEN}"` |
-| VS Code Copilot (project) | `.vscode/mcp.json` | `"TOKEN": "${env:TOKEN}"` |
-| Copilot CLI (user) | `~/.copilot/mcp-config.json` | no expansion syntax documented — the `env` object is omitted (stdio servers inherit your shell env) and `tools: ["*"]` is written explicitly |
+| Copilot (project) | `.github/mcp.json` | `"TOKEN": "${TOKEN}"`; `tools: ["*"]` is written when no narrower inventory is declared |
+| Copilot CLI (user) | `~/.copilot/mcp-config.json` | `"TOKEN": "${TOKEN}"`; `tools: ["*"]` is written when no narrower inventory is declared |
 | Cursor | `.cursor/mcp.json` | `"TOKEN": "${env:TOKEN}"` |
 | Codex | `.codex/config.toml` | `env_vars = ["TOKEN"]` (forwarded from the shell); HTTP headers via `env_http_headers = { Header = "TOKEN" }` |
 
-Note: Copilot CLI reads MCP servers only from its user-level config; the project-scope Copilot MCP install targets VS Code Copilot (`.vscode/mcp.json`), which the Copilot coding agent also understands.
+Note: Copilot CLI loads trusted workspace MCP from `.github/mcp.json`. GitHub.com repository MCP for the cloud agent/code review is administered in repository settings; agent-local MCP remains embedded in generated `.github/agents/*.agent.md` files.
 
 Out-of-the-box friction each product adds by design (the CLI prints these as "next step" hints after apply): Claude Code asks the user to approve project `.mcp.json` servers on next start; the Copilot cloud coding agent reads repo hooks only from the default branch; MCP env vars must exist in the user's shell.
 
@@ -110,8 +110,22 @@ Out-of-the-box friction each product adds by design (the CLI prints these as "ne
 
 - Merges never remove or rewrite entries the user already has; an existing server/hook with **different** content is a conflict error (exit code 3), never a silent overwrite.
 - Identical re-installs are no-ops (idempotent).
-- Any file agentpack modifies is backed up first (`.agentpack/backups/<timestamp>/`).
+- Any file agentpack modifies is backed up first (`.agentpack/backups/<timestamp>/<path-key>/`), so equal basenames from different providers cannot collide.
 - Values in `env:` maps are rejected at validation — env vars are names, never secrets.
+
+Portable pre-tool hooks use exit code 2 as their denial contract. Claude Code,
+Codex, and Cursor consume that directly. Copilot treats exit code 2 as a warning,
+so AgentPack installs a small provider wrapper that converts it to Copilot's
+successful structured response (`permissionDecision: "deny"`).
+
+## Verification boundary
+
+The provider matrix and generated config dialects are unit-tested. Unit tests can
+prove deterministic translation, merge behavior, drift detection, path safety,
+and wrapper behavior. They cannot prove provider login state, repository trust,
+organization policy, feature flags, network access, or a future provider release.
+Those remain runtime integration checks and are reported separately from unit-test
+coverage.
 
 ## Keeping this table honest
 

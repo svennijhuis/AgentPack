@@ -23,34 +23,98 @@ public static class HookMerger
         CopyHookContent(sourcePath, supportPath, backupIfExists);
 
         var commandPath = ResolveHookCommand(asset, supportPath);
-        var command = scope == InstallScope.User
-            ? commandPath
-            : "./" + Path.GetRelativePath(scopeRoot, commandPath).Replace(Path.DirectorySeparatorChar, '/');
+        var powershellCommandPath = target.Provider == ProviderName.Copilot
+            ? FindPowershellTwinPath(supportPath, commandPath)
+            : null;
+        if (target.Provider == ProviderName.Copilot && Trigger(asset) == HookTrigger.PreToolUse)
+        {
+            (commandPath, powershellCommandPath) = CreateCopilotPreToolWrappers(
+                supportPath, commandPath, powershellCommandPath);
+        }
+
+        var command = ConfigCommand(commandPath, scopeRoot, scope);
+        var powershellCommand = powershellCommandPath is null
+            ? null
+            : ConfigCommand(powershellCommandPath, scopeRoot, scope);
 
         switch (target.Provider)
         {
             case ProviderName.Claude:
             case ProviderName.Codex:
-                MergeSharedConfig(targetPath, asset, backupIfExists,
-                    (hooks, changedAsset) => MergeClaudeStyleHook(hooks, changedAsset, command, ClaudeStyleEvent(target.Provider, asset)),
+                MergeSharedConfig(targetPath, backupIfExists, hooks =>
+                {
+                    RemoveManagedRegistrations(hooks, target.Provider, supportPath);
+                    MergeClaudeStyleHook(hooks, asset, command, ClaudeStyleEvent(target.Provider, asset));
+                },
                     setVersion: false);
                 break;
 
             case ProviderName.Cursor:
-                MergeSharedConfig(targetPath, asset, backupIfExists,
-                    (hooks, changedAsset) => MergeCursorHook(hooks, changedAsset, command),
+                MergeSharedConfig(targetPath, backupIfExists, hooks =>
+                {
+                    RemoveManagedRegistrations(hooks, target.Provider, supportPath);
+                    MergeCursorHook(hooks, asset, command);
+                },
                     setVersion: true);
                 break;
 
             case ProviderName.Copilot:
-                WriteCopilotHookFile(targetPath, asset, command, supportPath, backupIfExists);
+                WriteCopilotHookFile(targetPath, asset, command, powershellCommand, backupIfExists);
                 break;
 
             default:
                 throw new AgentPackException($"{target.Provider.Display()} hook installation is not implemented.");
         }
 
-        return ContentHash.Compute(targetPath);
+        return CurrentChecksum(asset, targetPath, target.Provider, scopeRoot, scope);
+    }
+
+    /// <summary>
+    /// Hashes only this asset's registration inside a shared hook file. Unrelated
+    /// user hooks and other AgentPack hooks must not make this asset look modified.
+    /// </summary>
+    public static string CurrentChecksum(
+        Asset asset,
+        string targetPath,
+        ProviderName provider,
+        string scopeRoot,
+        InstallScope scope) => CurrentChecksum(asset.Id, targetPath, provider, scopeRoot, scope);
+
+    public static string CurrentChecksum(
+        string assetId,
+        string targetPath,
+        ProviderName provider,
+        string scopeRoot,
+        InstallScope scope)
+    {
+        if (!File.Exists(targetPath)) return "";
+        if (provider == ProviderName.Copilot) return ContentHash.Compute(targetPath);
+
+        var root = ParseRoot(targetPath);
+        var hooks = root["hooks"] as JsonObject ?? new JsonObject();
+        var supportPath = Path.GetFullPath(Path.Combine(scopeRoot, SupportRelativePath(provider, assetId, scope)));
+        var fragment = ManagedFragment(hooks, provider, supportPath);
+        return ContentHash.ComputeText(fragment.ToJsonString(JsonOptions));
+    }
+
+    /// <summary>Removes only this asset's entries from a shared provider config.</summary>
+    public static void Remove(
+        string assetId,
+        ProviderName provider,
+        string targetPath,
+        string scopeRoot,
+        InstallScope scope,
+        Action<string> backupIfExists)
+    {
+        if (provider == ProviderName.Copilot || !File.Exists(targetPath)) return;
+        var root = ParseRoot(targetPath);
+        if (root["hooks"] is not JsonObject hooks) return;
+
+        var supportPath = Path.GetFullPath(Path.Combine(scopeRoot, SupportRelativePath(provider, assetId, scope)));
+        if (!RemoveManagedRegistrations(hooks, provider, supportPath)) return;
+
+        backupIfExists(targetPath);
+        AtomicWrite.Text(targetPath, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
     /// <summary>The exact config fragment that will be written — used for previews before applying.</summary>
@@ -100,23 +164,132 @@ public static class HookMerger
     /// <summary>Copilot hook config files are per-asset, so removal may delete them; the other providers share one config file.</summary>
     public static bool IsSharedConfigFile(ProviderName provider) => provider != ProviderName.Copilot;
 
-    private static void MergeSharedConfig(string path, Asset asset, Action<string> backupIfExists, Func<JsonObject, Asset, bool> merge, bool setVersion)
+    private static void MergeSharedConfig(string path, Action<string> backupIfExists, Action<JsonObject> merge, bool setVersion)
     {
         var root = File.Exists(path)
-            ? JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject()
+            ? ParseRoot(path)
             : new JsonObject();
+        var before = root.DeepClone();
 
         if (setVersion) root["version"] ??= 1;
         if (root["hooks"] is not JsonObject hooks)
         {
+            if (root["hooks"] is not null)
+            {
+                throw new AgentPackException(
+                    $"Hook configuration '{path}' has a non-object 'hooks' value.",
+                    "Change 'hooks' to a JSON object and retry; AgentPack did not overwrite it.",
+                    ExitCodes.DriftOrConflict);
+            }
             hooks = new JsonObject();
             root["hooks"] = hooks;
         }
 
-        var changed = merge(hooks, asset);
-        if (!changed && File.Exists(path)) return;
+        merge(hooks);
+        if (JsonNode.DeepEquals(before, root) && File.Exists(path)) return;
         if (File.Exists(path)) backupIfExists(path);
         AtomicWrite.Text(path, root.ToJsonString(JsonOptions) + Environment.NewLine);
+    }
+
+    private static JsonObject ManagedFragment(JsonObject hooks, ProviderName provider, string supportPath)
+    {
+        var selectedHooks = new JsonObject();
+        foreach (var (eventName, eventNode) in hooks)
+        {
+            if (eventNode is not JsonArray eventArray) continue;
+            var selectedEvent = new JsonArray();
+
+            if (provider is ProviderName.Claude or ProviderName.Codex)
+            {
+                foreach (var group in eventArray.OfType<JsonObject>())
+                {
+                    if (group["hooks"] is not JsonArray handlers) continue;
+                    var selectedHandlers = new JsonArray();
+                    foreach (var handler in handlers.OfType<JsonObject>().Where(x => BelongsToAsset(x, supportPath)))
+                        selectedHandlers.Add(handler.DeepClone());
+                    if (selectedHandlers.Count == 0) continue;
+                    selectedEvent.Add(new JsonObject
+                    {
+                        ["matcher"] = group["matcher"]?.DeepClone(),
+                        ["hooks"] = selectedHandlers
+                    });
+                }
+            }
+            else
+            {
+                foreach (var entry in eventArray.OfType<JsonObject>().Where(x => BelongsToAsset(x, supportPath)))
+                    selectedEvent.Add(entry.DeepClone());
+            }
+
+            if (selectedEvent.Count > 0) selectedHooks[eventName] = selectedEvent;
+        }
+
+        return new JsonObject { ["hooks"] = selectedHooks };
+    }
+
+    private static bool RemoveManagedRegistrations(JsonObject hooks, ProviderName provider, string supportPath)
+    {
+        var changed = false;
+        foreach (var (eventName, eventNode) in hooks.ToList())
+        {
+            if (eventNode is not JsonArray eventArray) continue;
+
+            for (var index = eventArray.Count - 1; index >= 0; index--)
+            {
+                if (eventArray[index] is not JsonObject entry) continue;
+                if (provider is ProviderName.Claude or ProviderName.Codex)
+                {
+                    if (entry["hooks"] is not JsonArray handlers) continue;
+                    for (var handlerIndex = handlers.Count - 1; handlerIndex >= 0; handlerIndex--)
+                    {
+                        if (handlers[handlerIndex] is JsonObject handler && BelongsToAsset(handler, supportPath))
+                        {
+                            handlers.RemoveAt(handlerIndex);
+                            changed = true;
+                        }
+                    }
+                    if (handlers.Count == 0) eventArray.RemoveAt(index);
+                }
+                else if (BelongsToAsset(entry, supportPath))
+                {
+                    eventArray.RemoveAt(index);
+                    changed = true;
+                }
+            }
+
+            if (eventArray.Count == 0) hooks.Remove(eventName);
+        }
+
+        return changed;
+    }
+
+    private static bool BelongsToAsset(JsonObject entry, string supportPath)
+    {
+        var command = entry["command"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(command)) return false;
+        var normalizedCommand = command.Replace('\\', '/');
+        var normalizedSupport = supportPath.Replace('\\', '/').TrimEnd('/') + "/";
+        if (normalizedCommand.StartsWith(normalizedSupport, StringComparison.OrdinalIgnoreCase)) return true;
+
+        var directoryName = Path.GetFileName(supportPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var providerDirectory = Path.GetFileName(Path.GetDirectoryName(supportPath));
+        return normalizedCommand.Contains($"/{providerDirectory}/{directoryName}/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JsonObject ParseRoot(string path)
+    {
+        try
+        {
+            return JsonNode.Parse(File.ReadAllText(path)) as JsonObject
+                ?? throw new InvalidOperationException("the JSON root must be an object");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            throw new AgentPackException(
+                $"Hook configuration '{path}' is not a valid JSON object: {ex.Message}",
+                "Fix the JSON syntax and retry; AgentPack did not change the file.",
+                ExitCodes.ValidationFailed);
+        }
     }
 
     private static bool MergeClaudeStyleHook(JsonObject hooks, Asset asset, string command, string eventName)
@@ -166,11 +339,14 @@ public static class HookMerger
         return true;
     }
 
-    private static void WriteCopilotHookFile(string path, Asset asset, string command, string supportPath, Action<string> backupIfExists)
+    private static void WriteCopilotHookFile(
+        string path,
+        Asset asset,
+        string command,
+        string? powershellCommand,
+        Action<string> backupIfExists)
     {
-        // A PowerShell twin next to the bash script makes the hook cross-platform.
-        var powershell = FindPowershellTwin(supportPath, command);
-        var document = CopilotHookDocument(asset, command, powershell);
+        var document = CopilotHookDocument(asset, command, powershellCommand);
 
         if (File.Exists(path))
         {
@@ -199,15 +375,65 @@ public static class HookMerger
         };
     }
 
-    private static string? FindPowershellTwin(string supportPath, string bashCommand)
+    private static string? FindPowershellTwinPath(string supportPath, string commandPath)
     {
         if (!Directory.Exists(supportPath)) return null;
-        var twinName = Path.GetFileNameWithoutExtension(bashCommand) + ".ps1";
+        var twinName = Path.GetFileNameWithoutExtension(commandPath) + ".ps1";
         return Directory.EnumerateFiles(supportPath, "*.ps1", SearchOption.AllDirectories)
-            .Any(f => Path.GetFileName(f).Equals(twinName, StringComparison.OrdinalIgnoreCase))
-            ? Path.ChangeExtension(bashCommand, ".ps1")
-            : null;
+            .FirstOrDefault(f => Path.GetFileName(f).Equals(twinName, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// Copilot treats exit 2 as a warning for preToolUse, while Claude, Codex,
+    /// and Cursor treat it as a denial. Adapt the portable exit-2 contract to
+    /// Copilot's structured permissionDecision output without changing assets.
+    /// </summary>
+    private static (string Bash, string? Powershell) CreateCopilotPreToolWrappers(
+        string supportPath,
+        string commandPath,
+        string? powershellCommandPath)
+    {
+        var relativeCommand = Path.GetRelativePath(supportPath, commandPath)
+            .Replace(Path.DirectorySeparatorChar, '/').Replace("\"", "\\\"");
+        var bashWrapper = Path.Combine(supportPath, ".agentpack-copilot-pre-tool.sh");
+        AtomicWrite.Text(bashWrapper, $$"""
+            #!/usr/bin/env bash
+            set +e
+            script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+            output="$("$script_dir/{{relativeCommand}}" "$@")"
+            status=$?
+            if [ "$status" -eq 2 ]; then
+              printf '%s\n' '{"permissionDecision":"deny","permissionDecisionReason":"Blocked by AgentPack policy hook."}'
+              exit 0
+            fi
+            printf '%s\n' "$output"
+            exit "$status"
+            """ + Environment.NewLine);
+        ContentHash.MakeExecutable(bashWrapper);
+
+        if (powershellCommandPath is null) return (bashWrapper, null);
+
+        var relativePowershell = Path.GetRelativePath(supportPath, powershellCommandPath)
+            .Replace(Path.DirectorySeparatorChar, '/').Replace("'", "''");
+        var powershellWrapper = Path.Combine(supportPath, ".agentpack-copilot-pre-tool.ps1");
+        AtomicWrite.Text(powershellWrapper, $$"""
+            $script = Join-Path $PSScriptRoot '{{relativePowershell}}'
+            $payload = [Console]::In.ReadToEnd()
+            $output = $payload | & $script @args
+            $status = $LASTEXITCODE
+            if ($status -eq 2) {
+              Write-Output '{"permissionDecision":"deny","permissionDecisionReason":"Blocked by AgentPack policy hook."}'
+              exit 0
+            }
+            $output | Write-Output
+            exit $status
+            """ + Environment.NewLine);
+        return (bashWrapper, powershellWrapper);
+    }
+
+    private static string ConfigCommand(string path, string scopeRoot, InstallScope scope) => scope == InstallScope.User
+        ? path
+        : "./" + Path.GetRelativePath(scopeRoot, path).Replace(Path.DirectorySeparatorChar, '/');
 
     private static JsonObject ClaudeStyleHandler(Asset asset, string command) => new()
     {
@@ -293,7 +519,15 @@ public static class HookMerger
     {
         if (!string.IsNullOrWhiteSpace(asset.Hook?.Command))
         {
-            return Path.GetFullPath(Path.Combine(supportPath, asset.Hook.Command));
+            var command = PathSafety.ResolveUnderRoot(supportPath, asset.Hook.Command, $"Hook asset '{asset.Id}' command");
+            if (!File.Exists(command))
+            {
+                throw new AgentPackException(
+                    $"Hook asset '{asset.Id}' command '{asset.Hook.Command}' was not found in its content.",
+                    "Add the command file to the hook content directory and retry.",
+                    ExitCodes.ValidationFailed);
+            }
+            return command;
         }
 
         var hookSh = Path.Combine(supportPath, "hook.sh");

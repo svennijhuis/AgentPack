@@ -105,6 +105,7 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
     public override int Execute(CommandContext context, Settings settings)
     {
         var session = new CliSession();
+        var loaded = session.LoadCatalog();
         var scope = settings.ResolveScope(session.Paths);
         var targets = settings.Targets.ToList();
 
@@ -120,7 +121,7 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
         }
 
         var removed = new Installer(session.Paths).Remove(
-            kind, targets, settings.ExplicitProviders(), scope, settings.Force, settings.KeepLocal);
+            kind, targets, settings.ExplicitProviders(), scope, settings.Force, settings.KeepLocal, loaded);
         if (removed.Count == 0)
         {
             Output.Info("Nothing to remove.");
@@ -132,7 +133,7 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
         Output.Table(
             ["ID", "Kind", "Provider", "Version", "Path"],
             removed.Select(x => new[] { x.Id, x.Kind.Display(), x.Provider.Display(), x.Version, x.Path }));
-        Output.Info("Entries in shared provider configs (hooks/MCP) were deregistered from the lockfile; shared files were left untouched.");
+        Output.Info("Shared provider config files were preserved; only AgentPack-owned hook and MCP entries were removed.");
         return 0;
     }
 }

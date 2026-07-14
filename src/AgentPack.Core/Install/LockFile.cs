@@ -22,6 +22,11 @@ public sealed class LockEntry
     public InstallMode InstallMode { get; set; } = InstallMode.CopyTree;
     public string SourceChecksum { get; set; } = "";
     public string InstalledChecksum { get; set; } = "";
+    /// <summary>
+    /// Checksum of executable hook content stored beside a shared hook config.
+    /// Null keeps lock files written by older AgentPack versions compatible.
+    /// </summary>
+    public string? SupportChecksum { get; set; }
     public bool Pinned { get; set; }
     public bool Direct { get; set; } = true;
     public List<string> RequiredBy { get; set; } = [];

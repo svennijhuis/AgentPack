@@ -30,7 +30,7 @@ public static class ExternalSourceParser
         if (tree.Success)
         {
             var repo = $"https://github.com/{tree.Groups["owner"].Value}/{tree.Groups["repo"].Value}.git";
-            var path = source.Path ?? tree.Groups["path"].Value;
+            var path = ValidatePath(source.Path ?? tree.Groups["path"].Value);
             return new ResolvedExternalSource(repo, source.Ref, path, source.Checksum);
         }
 
@@ -38,20 +38,20 @@ public static class ExternalSourceParser
         if (githubRepo.Success)
         {
             var repo = $"https://github.com/{githubRepo.Groups["owner"].Value}/{githubRepo.Groups["repo"].Value}.git";
-            return new ResolvedExternalSource(repo, source.Ref, source.Path ?? "", source.Checksum);
+            return new ResolvedExternalSource(repo, source.Ref, ValidatePath(source.Path ?? ""), source.Checksum);
         }
 
         var azure = AzureDevOpsRepo.Match(source.Url);
         if (azure.Success)
         {
             var repo = source.Url[..(azure.Index + azure.Length)];
-            var path = source.Path ?? AzurePathFromQuery(source.Url);
+            var path = ValidatePath(source.Path ?? AzurePathFromQuery(source.Url));
             return new ResolvedExternalSource(repo, source.Ref, path, source.Checksum);
         }
 
         if (source.Url.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
         {
-            return new ResolvedExternalSource(source.Url, source.Ref, source.Path ?? "", source.Checksum);
+            return new ResolvedExternalSource(source.Url, source.Ref, ValidatePath(source.Path ?? ""), source.Checksum);
         }
 
         throw new AgentPackException(
@@ -96,5 +96,18 @@ public static class ExternalSourceParser
         }
 
         return "";
+    }
+
+    private static string ValidatePath(string path)
+    {
+        if (Path.IsPathRooted(path) || path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries).Any(x => x == ".."))
+        {
+            throw new AgentPackException(
+                $"External source path '{path}' escapes the checked-out repository.",
+                "Use a relative path inside the pinned repository; '..' and absolute paths are not allowed.",
+                ExitCodes.ValidationFailed);
+        }
+
+        return path.TrimStart('/', '\\');
     }
 }

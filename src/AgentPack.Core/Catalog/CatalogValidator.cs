@@ -246,7 +246,16 @@ public sealed class CatalogValidator
         {
             case AssetSource.Local local:
                 {
-                    var fullPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
+                    string fullPath;
+                    try
+                    {
+                        fullPath = PathSafety.ResolveUnderRoot(loaded.RootFor(asset), local.RelativePath, $"Local asset '{asset.Id}'");
+                    }
+                    catch (AgentPackException ex)
+                    {
+                        report.Error("asset.local.path.invalid", ex.Message);
+                        return;
+                    }
                     if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
                     {
                         report.Error("asset.local.missing", $"Asset '{asset.Id}' local content does not exist: {local.RelativePath}.");

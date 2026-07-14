@@ -29,7 +29,9 @@ public sealed class CodexAdapter : IProviderAdapter
                 ? Supported(Name, asset, Path.Combine(".codex", "AGENTS.md"), InstallMode.CopyTree, isFileTarget: true)
                 : Supported(Name, asset, "AGENTS.md", InstallMode.CopyTree, isFileTarget: true),
 
-            AssetKind.Prompts => Supported(Name, asset, Path.Combine(".codex", "prompts", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
+            AssetKind.Prompts => userScope
+                ? Supported(Name, asset, Path.Combine(".codex", "prompts", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true)
+                : Unsupported("Codex custom prompts are user-scoped only and deprecated; use a skill for a shared project workflow."),
 
             AssetKind.Hooks => Supported(Name, asset, Path.Combine(".codex", "hooks.json"), InstallMode.MergeHook),
 

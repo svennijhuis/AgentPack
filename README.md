@@ -2,7 +2,7 @@
 
 **One catalog of approved AI assets. Every developer. Every AI tool. One command.**
 
-`agentpack` is a .NET global tool that installs your organization's agents, skills, hooks, MCP servers, instructions, rules, and prompts into **Claude Code, Codex, GitHub Copilot, and Cursor** — each in that product's own native format, so everything works out of the box.
+`agentpack` is a .NET global tool that installs your organization's agents, skills, hooks, MCP servers, instructions, rules, and prompts into **Claude Code, Codex, GitHub Copilot, and Cursor**. It renders each product's documented native format and reports runtime steps such as trust approval, environment variables, or repository policy instead of hiding them.
 
 ```bash
 agentpack add
@@ -23,7 +23,7 @@ agentpack add
 
 ## What it manages
 
-Everything works on all four providers unless the product itself has no such concept:
+Every kind is mapped explicitly for all four providers; unsupported product or scope combinations are shown as skips rather than written to invented paths:
 
 | Kind | What it is | Claude | Codex | Copilot | Cursor |
 |---|---|:-:|:-:|:-:|:-:|
@@ -33,10 +33,10 @@ Everything works on all four providers unless the product itself has no such con
 | **mcp** | MCP server configs | ✓ | ✓ | ✓ | ✓ |
 | **instructions** | CLAUDE.md / AGENTS.md / Copilot instructions | ✓ | ✓ | ✓ | ✓ |
 | **prompts** | reusable prompts / slash commands | ✓ | ✓ | ✓ | ✓ |
-| **rules** | Cursor rules (.mdc) | — | — | — | ✓ |
+| **rules** | provider-native modular rules | ✓ | — | — | ✓ |
 | **profiles** | everything a team needs, in one command | ✓ | ✓ | ✓ | ✓ |
 
-"—" = the product has no such feature; agentpack says so explicitly instead of writing files nothing reads. Every path is verified against official docs and pinned by tests: [provider-mapping.md](docs/provider-mapping.md).
+"—" = the product has no such feature; agentpack says so explicitly instead of writing files nothing reads. Scope-specific exceptions are reported honestly too: for example, Codex's deprecated custom prompts are user-only, so project workflows should be skills. Every path is verified against official docs and pinned by tests: [provider-mapping.md](docs/provider-mapping.md).
 
 ## Setup (once)
 

@@ -7,14 +7,14 @@ namespace AgentPack.Core;
 
 /// <summary>
 /// Merges MCP server entries into provider config files without disturbing
-/// anything the user already has there. JSON providers differ only in the root
-/// key (.vscode/mcp.json uses "servers", everything else "mcpServers");
-/// Codex uses TOML [mcp_servers.*] sections.
+/// anything the user already has there. JSON providers use the mcpServers root
+/// key; Codex uses TOML [mcp_servers.*] sections.
 /// </summary>
 public static class McpMerger
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly Regex BareTomlKey = new("^[A-Za-z0-9_-]+$", RegexOptions.Compiled);
+    private static readonly Regex EnvVarPattern = new("^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled);
 
     public static string Apply(Asset asset, string? sourcePath, InstallTarget target, string targetPath, InstallScope scope, Action<string> backupIfExists)
     {
@@ -47,7 +47,7 @@ public static class McpMerger
             return ContentHash.ComputeText(string.Join("\n", sections));
         }
 
-        var root = JsonNode.Parse(File.ReadAllText(targetPath))?.AsObject() ?? new JsonObject();
+        var root = ParseObjectFile(targetPath, "MCP configuration");
         var current = root[RootKey(target.Provider, scope)] as JsonObject;
         var selected = new JsonObject();
         foreach (var id in expectedIds)
@@ -85,7 +85,7 @@ public static class McpMerger
             return;
         }
 
-        var root = JsonNode.Parse(File.ReadAllText(targetPath))?.AsObject() ?? new JsonObject();
+        var root = ParseObjectFile(targetPath, "MCP configuration");
         if (root[RootKey(target.Provider, scope)] is not JsonObject servers) return;
         var changed = false;
         foreach (var id in serverIds) changed |= servers.Remove(id);
@@ -112,8 +112,7 @@ public static class McpMerger
         return new JsonObject { [RootKey(target.Provider, scope)] = Clone(servers) }.ToJsonString(JsonOptions);
     }
 
-    public static string RootKey(ProviderName provider, InstallScope scope) =>
-        provider == ProviderName.Copilot && scope == InstallScope.Project ? "servers" : "mcpServers";
+    public static string RootKey(ProviderName provider, InstallScope scope) => "mcpServers";
 
     public static JsonObject BuildServers(
         Asset asset,
@@ -135,12 +134,23 @@ public static class McpMerger
                 $"Add an mcp: section to assets/mcp/{asset.Id}/agentpack.yaml.");
         }
 
-        var root = JsonNode.Parse(File.ReadAllText(rawPath))?.AsObject()
-            ?? throw new AgentPackException($"MCP asset '{asset.Id}' has an invalid mcp.json.");
+        var root = ParseObjectFile(rawPath, $"MCP asset '{asset.Id}' content");
 
         if (root["mcpServers"] is JsonObject existingServers)
         {
-            return Clone(existingServers).AsObject();
+            var normalized = new JsonObject();
+            foreach (var (serverId, node) in existingServers)
+            {
+                if (node is not JsonObject rawServer)
+                {
+                    throw new AgentPackException(
+                        $"MCP asset '{asset.Id}' server '{serverId}' must be a JSON object.",
+                        "Fix the reviewed mcp.json and retry.",
+                        ExitCodes.ValidationFailed);
+                }
+                normalized[serverId] = BuildRawServer(rawServer, asset.Id, provider, scope, agentLocal);
+            }
+            return normalized;
         }
 
         var serverName = StringValue(root, "server") ?? StringValue(root, "name") ?? asset.Id;
@@ -149,9 +159,9 @@ public static class McpMerger
 
     /// <summary>
     /// How each target references environment variables — verified per product:
-    /// Claude Code expands ${VAR}; VS Code and Cursor expand ${env:VAR};
-    /// Copilot CLI documents no expansion (stdio servers inherit the shell env, so the
-    /// env object is omitted); Codex converts to env_vars/env_http_headers in TOML.
+    /// Claude Code and Copilot expand ${VAR}; Cursor expands ${env:VAR};
+    /// Copilot expands the same ${VAR} form in project and user config;
+    /// Codex converts to env_vars/env_http_headers in TOML.
     /// </summary>
     private static string EnvPlaceholder(
         ProviderName provider,
@@ -160,12 +170,8 @@ public static class McpMerger
         bool agentLocal = false) => provider switch
         {
             ProviderName.Cursor => "${env:" + envVar + "}",
-            ProviderName.Copilot when scope == InstallScope.Project && !agentLocal => "${env:" + envVar + "}",
             _ => "${" + envVar + "}"
         };
-
-    private static bool OmitEnvObject(ProviderName provider, InstallScope scope, bool agentLocal = false) =>
-        provider == ProviderName.Copilot && scope == InstallScope.User && !agentLocal;
 
     private static JsonObject BuildTypedServer(
         McpServer mcp,
@@ -179,10 +185,7 @@ public static class McpMerger
             server["command"] = mcp.Command ?? "";
             server["args"] = ToJsonArray(mcp.Args);
             if (mcp.Cwd is not null) server["cwd"] = mcp.Cwd;
-            if (!OmitEnvObject(provider, scope, agentLocal))
-            {
-                server["env"] = EnvObject(mcp.EnvVars, provider, scope, agentLocal);
-            }
+            server["env"] = EnvObject(mcp.EnvVars, provider, scope, agentLocal);
         }
         else
         {
@@ -204,9 +207,9 @@ public static class McpMerger
         {
             server["tools"] = ToJsonArray(tools);
         }
-        else if (provider == ProviderName.Copilot && scope == InstallScope.User && !agentLocal)
+        else if (provider == ProviderName.Copilot)
         {
-            // Copilot CLI expects an explicit tools allowlist; "*" enables all.
+            // Copilot MCP schemas expect an explicit tools allowlist; "*" enables all.
             server["tools"] = new JsonArray { "*" };
         }
 
@@ -227,10 +230,7 @@ public static class McpMerger
         {
             server["command"] = StringValue(raw, "command") ?? "";
             server["args"] = StringArray(raw["args"]);
-            if (!OmitEnvObject(provider, scope, agentLocal))
-            {
-                server["env"] = EnvObjectFromRaw(raw, assetId, provider, scope, agentLocal);
-            }
+            server["env"] = EnvObjectFromRaw(raw, assetId, provider, scope, agentLocal);
 
             var cwd = StringValue(raw, "cwd");
             if (!string.IsNullOrWhiteSpace(cwd)) server["cwd"] = cwd;
@@ -248,21 +248,51 @@ public static class McpMerger
 
                 server["headers"] = normalized;
             }
+            else if (raw["headers"] is JsonObject rawHeaders)
+            {
+                var normalized = new JsonObject();
+                foreach (var (header, value) in rawHeaders)
+                {
+                    var envVar = PlaceholderEnvVar(value?.GetValue<string>() ?? "");
+                    if (envVar is null)
+                    {
+                        throw new AgentPackException(
+                            $"MCP asset '{assetId}' header '{header}' must reference an environment variable, not store a value.",
+                            "Use ${ENV_VAR} in raw content or declare headerEnvVars in reviewed AgentPack metadata.",
+                            ExitCodes.ValidationFailed);
+                    }
+                    normalized[header] = EnvPlaceholder(provider, scope, envVar, agentLocal);
+                }
+                server["headers"] = normalized;
+            }
         }
 
         var tools = StringArray(raw["tools"]);
-        if (tools.Count > 0) server["tools"] = tools;
+        if (tools.Count > 0)
+        {
+            server["tools"] = tools;
+        }
+        else if (provider == ProviderName.Copilot)
+        {
+            // Copilot requires a tool filter for both local and remote servers.
+            server["tools"] = new JsonArray { "*" };
+        }
         return server;
     }
 
     private static void MergeJson(string path, string rootKey, JsonObject incomingServers, Action<string> backupIfExists)
     {
-        var root = File.Exists(path)
-            ? JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? new JsonObject()
-            : new JsonObject();
+        var root = File.Exists(path) ? ParseObjectFile(path, "MCP configuration") : new JsonObject();
 
         if (root[rootKey] is not JsonObject existingServers)
         {
+            if (root[rootKey] is not null)
+            {
+                throw new AgentPackException(
+                    $"MCP configuration '{path}' has a non-object '{rootKey}' value.",
+                    $"Change '{rootKey}' to a JSON object and retry; AgentPack did not overwrite it.",
+                    ExitCodes.DriftOrConflict);
+            }
             existingServers = new JsonObject();
             root[rootKey] = existingServers;
         }
@@ -412,7 +442,8 @@ public static class McpMerger
         foreach (var (key, value) in rawEnv)
         {
             var stringValue = value?.GetValue<string>() ?? "";
-            if (!stringValue.Equals("${" + key + "}", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(stringValue))
+            var referenced = PlaceholderEnvVar(stringValue);
+            if (referenced is null || !referenced.Equals(key, StringComparison.Ordinal))
             {
                 throw new AgentPackException(
                     $"MCP asset '{assetId}' env var '{key}' must be declared by name, not stored with a value.",
@@ -423,6 +454,19 @@ public static class McpMerger
         }
 
         return env;
+    }
+
+    private static string? PlaceholderEnvVar(string value)
+    {
+        var text = value.Trim();
+        var candidate = text switch
+        {
+            _ when text.StartsWith("${env:", StringComparison.Ordinal) && text.EndsWith('}') => text[6..^1],
+            _ when text.StartsWith("${", StringComparison.Ordinal) && text.EndsWith('}') => text[2..^1],
+            _ when text.StartsWith('$') && text.Length > 1 && !text.Contains('{') => text[1..],
+            _ => null
+        };
+        return candidate is not null && EnvVarPattern.IsMatch(candidate) ? candidate : null;
     }
 
     private static JsonArray ToJsonArray(IEnumerable<string> values)
@@ -487,6 +531,22 @@ public static class McpMerger
 
     private static string NormalizeToml(string text) => text.Replace("\r\n", "\n").Trim();
 
+    private static JsonObject ParseObjectFile(string path, string label)
+    {
+        try
+        {
+            return JsonNode.Parse(File.ReadAllText(path)) as JsonObject
+                ?? throw new InvalidOperationException("the JSON root must be an object");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            throw new AgentPackException(
+                $"{label} '{path}' is not a valid JSON object: {ex.Message}",
+                "Fix the JSON syntax and retry; AgentPack did not change the file.",
+                ExitCodes.ValidationFailed);
+        }
+    }
+
     private static void BackupIfExists(string path, Action<string> backupIfExists)
     {
         if (File.Exists(path) || Directory.Exists(path)) backupIfExists(path);
@@ -495,12 +555,14 @@ public static class McpMerger
 
 public static class AtomicWrite
 {
+    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
     public static void Text(string path, string contents)
     {
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         var tempPath = fullPath + ".tmp-" + Guid.NewGuid().ToString("N");
-        File.WriteAllText(tempPath, contents, Encoding.UTF8);
+        File.WriteAllText(tempPath, contents, Utf8WithoutBom);
         File.Move(tempPath, fullPath, overwrite: true);
     }
 }

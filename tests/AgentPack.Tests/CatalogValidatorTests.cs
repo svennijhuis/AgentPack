@@ -130,9 +130,8 @@ public class CatalogValidatorTests
     public void AssetWithNoInstallableProviderIsAnError()
     {
         using var temp = new TempDir();
-        // Rules limited to providers without rules files: nothing can install it.
-        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Rules, "nowhere",
-            files: new Dictionary<string, string> { ["nowhere.mdc"] = "rule\n" });
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Templates, "nowhere",
+            files: new Dictionary<string, string> { ["template.md"] = "template\n" });
         asset = asset with { Providers = [ProviderName.Codex, ProviderName.Copilot, ProviderName.Claude] };
 
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset));
@@ -165,5 +164,17 @@ public class CatalogValidatorTests
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, agent), verifyChecksums: false);
 
         Assert.Contains(report.Issues, x => x.Code == "agent.description.missing" && x.Severity == IssueSeverity.Error);
+    }
+
+    [Fact]
+    public void LocalAssetPathCannotEscapeCatalogRoot()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.Asset(AssetKind.Skills, "escape", source: new AssetSource.Local("../outside", null));
+        var loaded = TestData.Loaded(temp.Path, asset);
+
+        var report = new CatalogValidator().Validate(loaded, verifyChecksums: false);
+
+        Assert.Contains(report.Issues, x => x.Code == "asset.local.path.invalid" && x.Severity == IssueSeverity.Error);
     }
 }

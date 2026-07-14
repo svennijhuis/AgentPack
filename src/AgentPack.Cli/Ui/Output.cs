@@ -88,37 +88,51 @@ public static class Output
     public static void Plan(string title, InstallPlan plan, InstallScope scope, string workingDirectory, string providerHome)
     {
         var scopeName = scope == InstallScope.User ? "user" : "project";
+        if (Plain)
+        {
+            Console.WriteLine($"{title} ({scopeName} scope)");
+            var root = scope == InstallScope.User ? providerHome : workingDirectory;
+            if (plan.Items.Count == 0)
+            {
+                Console.WriteLine("Nothing to do.");
+            }
+            else
+            {
+                Console.WriteLine("ID\tKind\tProvider\tVersion\tAction\tTarget");
+                foreach (var item in plan.Items)
+                {
+                    var target = Path.GetRelativePath(root, item.TargetPath);
+                    if (target.StartsWith("..", StringComparison.Ordinal)) target = item.TargetPath;
+                    Console.WriteLine(string.Join('\t',
+                        item.Asset.Id,
+                        item.Asset.Kind.Display(),
+                        item.Provider.Display(),
+                        item.Asset.Version,
+                        PlanAction(item, markup: false),
+                        target));
+                }
+            }
+
+            foreach (var skip in plan.Skipped)
+                Console.WriteLine($"skipped {skip.Asset.Id} for {skip.Provider.Display()}: {skip.Reason}");
+            return;
+        }
+
         AnsiConsole.MarkupLine($"[bold]{Markup.Escape(title)}[/] [grey]({scopeName} scope)[/]");
 
         if (plan.Items.Count > 0)
         {
             var table = new Table().Border(TableBorder.Rounded).BorderColor(Color.Grey);
-            table.AddColumn("[bold]ID[/]");
-            table.AddColumn("[bold]Kind[/]");
-            table.AddColumn("[bold]Provider[/]");
-            table.AddColumn("[bold]Version[/]");
+            table.AddColumn(new TableColumn("[bold]ID[/]").NoWrap());
+            table.AddColumn(new TableColumn("[bold]Kind[/]").NoWrap());
+            table.AddColumn(new TableColumn("[bold]Provider[/]").NoWrap());
+            table.AddColumn(new TableColumn("[bold]Version[/]").NoWrap());
             table.AddColumn("[bold]Action[/]");
             table.AddColumn("[bold]Target[/]");
 
             var root = scope == InstallScope.User ? providerHome : workingDirectory;
             foreach (var item in plan.Items)
             {
-                var action = item.State switch
-                {
-                    InstallState.Available => item.Target.Mode == InstallMode.CopyTree ? "[green]install[/]" : "[green]merge into[/]",
-                    InstallState.UpdateAvailable => "[blue]update[/]",
-                    InstallState.Installed => "[grey]up to date[/]",
-                    InstallState.Pinned => "[grey]pinned (skip)[/]",
-                    InstallState.LocalChanges when item.RenderFingerprint is not null &&
-                        !item.RenderFingerprint.Equals(item.Existing?.RenderFingerprint, StringComparison.OrdinalIgnoreCase) =>
-                        "[yellow]local changes; rebuild required[/]",
-                    InstallState.LocalChanges => "[yellow]local changes[/]",
-                    InstallState.Missing => "[yellow]reinstall (missing)[/]",
-                    InstallState.UnmanagedPresent => "[yellow]overwrite unmanaged[/]",
-                    InstallState.Adoptable => "[green]adopt identical[/]",
-                    _ => Markup.Escape(item.State.Display())
-                };
-
                 var target = Path.GetRelativePath(root, item.TargetPath);
                 if (target.StartsWith("..")) target = item.TargetPath;
                 table.AddRow(
@@ -126,7 +140,7 @@ public static class Output
                     Markup.Escape(item.Asset.Kind.Display()),
                     Markup.Escape(item.Provider.Display()),
                     Markup.Escape(item.Asset.Version.ToString()),
-                    action,
+                    PlanAction(item, markup: true),
                     Markup.Escape(target));
             }
 
@@ -142,6 +156,26 @@ public static class Output
             AnsiConsole.MarkupLine(
                 $"  [grey]skipped[/] {Markup.Escape(skip.Asset.Id)} [grey]for[/] {Markup.Escape(skip.Provider.Display())}[grey]:[/] [grey]{Markup.Escape(skip.Reason)}[/]");
         }
+    }
+
+    private static string PlanAction(InstallPlanItem item, bool markup)
+    {
+        var (text, color) = item.State switch
+        {
+            InstallState.Available => (item.Target.Mode == InstallMode.CopyTree ? "install" : "merge into", "green"),
+            InstallState.UpdateAvailable => ("update", "blue"),
+            InstallState.Installed => ("up to date", "grey"),
+            InstallState.Pinned => ("pinned (skip)", "grey"),
+            InstallState.LocalChanges when item.RenderFingerprint is not null &&
+                !item.RenderFingerprint.Equals(item.Existing?.RenderFingerprint, StringComparison.OrdinalIgnoreCase) =>
+                ("local changes; rebuild required", "yellow"),
+            InstallState.LocalChanges => ("local changes", "yellow"),
+            InstallState.Missing => ("reinstall (missing)", "yellow"),
+            InstallState.UnmanagedPresent => ("overwrite unmanaged", "yellow"),
+            InstallState.Adoptable => ("adopt identical", "green"),
+            _ => (item.State.Display(), "")
+        };
+        return markup && color.Length > 0 ? $"[{color}]{Markup.Escape(text)}[/]" : text;
     }
 
     public static void AgentCompatibility(

@@ -23,7 +23,7 @@ app.Configure(config =>
 
     config.AddCommand<ImportCommand>("import")
         .WithDescription("Scaffold an external asset pinned to an upstream commit or tag.")
-        .WithExample("import", "https://github.com/anthropics/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d");
+        .WithExample("import", "https://github.com/owner/agent-skills@v1.0.0");
 
     config.AddCommand<AddCommand>("add")
         .WithDescription("Install assets. With no arguments, pick interactively.")

@@ -8,45 +8,23 @@ namespace AgentPack.Tests;
 /// </summary>
 public class ProviderAdapterTests
 {
+    public static IEnumerable<object?[]> FullProviderKindMatrix()
+    {
+        foreach (var provider in ProviderNames.All)
+            foreach (var kind in AssetKinds.All)
+                foreach (var userScope in new[] { false, true })
+                {
+                    var expected = Expected(provider, kind, userScope);
+                    yield return [provider, kind, userScope, expected?.Path, expected?.Mode ?? default, expected?.FileTarget ?? false];
+                }
+    }
+
+    [Fact]
+    public void MatrixDeclaresEveryProviderKindAndScope() =>
+        Assert.Equal(ProviderNames.All.Count * AssetKinds.All.Count * 2, FullProviderKindMatrix().Count());
+
     [Theory]
-    // provider, kind, userScope, expected relative path (null = unsupported), mode, fileTarget
-    [InlineData(ProviderName.Claude, AssetKind.Agents, false, ".claude/agents/demo.md", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Claude, AssetKind.Agents, true, ".claude/agents/demo.md", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Claude, AssetKind.Skills, false, ".claude/skills/demo", InstallMode.CopyTree, false)]
-    [InlineData(ProviderName.Claude, AssetKind.Hooks, false, ".claude/settings.json", InstallMode.MergeHook, false)]
-    [InlineData(ProviderName.Claude, AssetKind.Mcp, false, ".mcp.json", InstallMode.MergeMcp, false)]
-    [InlineData(ProviderName.Claude, AssetKind.Mcp, true, ".claude.json", InstallMode.MergeMcp, false)]
-    [InlineData(ProviderName.Claude, AssetKind.Instructions, false, "CLAUDE.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Claude, AssetKind.Instructions, true, ".claude/CLAUDE.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Claude, AssetKind.Prompts, false, ".claude/commands/demo.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Claude, AssetKind.Rules, false, null, default(InstallMode), false)]
-    [InlineData(ProviderName.Codex, AssetKind.Skills, false, ".agents/skills/demo", InstallMode.CopyTree, false)]
-    [InlineData(ProviderName.Codex, AssetKind.Agents, false, ".codex/agents/demo.toml", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Codex, AssetKind.Agents, true, ".codex/agents/demo.toml", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Codex, AssetKind.Mcp, false, ".codex/config.toml", InstallMode.MergeMcp, false)]
-    [InlineData(ProviderName.Codex, AssetKind.Instructions, false, "AGENTS.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Codex, AssetKind.Instructions, true, ".codex/AGENTS.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Codex, AssetKind.Prompts, false, ".codex/prompts/demo.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Codex, AssetKind.Hooks, false, ".codex/hooks.json", InstallMode.MergeHook, false)]
-    [InlineData(ProviderName.Codex, AssetKind.Rules, false, null, default(InstallMode), false)]
-    [InlineData(ProviderName.Copilot, AssetKind.Skills, false, ".github/skills/demo", InstallMode.CopyTree, false)]
-    [InlineData(ProviderName.Copilot, AssetKind.Agents, false, ".github/agents/demo.agent.md", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Copilot, AssetKind.Agents, true, ".copilot/agents/demo.agent.md", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Copilot, AssetKind.Skills, true, ".copilot/skills/demo", InstallMode.CopyTree, false)]
-    [InlineData(ProviderName.Copilot, AssetKind.Mcp, false, ".vscode/mcp.json", InstallMode.MergeMcp, false)]
-    [InlineData(ProviderName.Copilot, AssetKind.Mcp, true, ".copilot/mcp-config.json", InstallMode.MergeMcp, false)]
-    [InlineData(ProviderName.Copilot, AssetKind.Instructions, false, ".github/instructions/demo.instructions.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Copilot, AssetKind.Prompts, false, ".github/prompts/demo.prompt.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Copilot, AssetKind.Hooks, false, ".github/hooks/demo.json", InstallMode.MergeHook, false)]
-    [InlineData(ProviderName.Copilot, AssetKind.Hooks, true, ".copilot/hooks/demo.json", InstallMode.MergeHook, false)]
-    [InlineData(ProviderName.Cursor, AssetKind.Skills, false, ".cursor/skills/demo", InstallMode.CopyTree, false)]
-    [InlineData(ProviderName.Cursor, AssetKind.Agents, false, ".cursor/agents/demo.md", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Cursor, AssetKind.Agents, true, ".cursor/agents/demo.md", InstallMode.RenderAgent, true)]
-    [InlineData(ProviderName.Cursor, AssetKind.Rules, false, ".cursor/rules/demo.mdc", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Cursor, AssetKind.Hooks, false, ".cursor/hooks.json", InstallMode.MergeHook, false)]
-    [InlineData(ProviderName.Cursor, AssetKind.Mcp, false, ".cursor/mcp.json", InstallMode.MergeMcp, false)]
-    [InlineData(ProviderName.Cursor, AssetKind.Instructions, false, "AGENTS.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Cursor, AssetKind.Prompts, false, ".cursor/commands/demo.md", InstallMode.CopyTree, true)]
+    [MemberData(nameof(FullProviderKindMatrix))]
     public void ProviderKindMatrix(ProviderName provider, AssetKind kind, bool userScope, string? expectedPath, InstallMode mode, bool fileTarget)
     {
         var asset = TestData.Asset(kind, "demo");
@@ -64,6 +42,62 @@ public class ProviderAdapterTests
         Assert.Equal(mode, supported.Target.Mode);
         Assert.Equal(fileTarget, supported.Target.IsFileTarget);
     }
+
+    private sealed record ExpectedTarget(string Path, InstallMode Mode, bool FileTarget = false);
+
+    private static ExpectedTarget? Expected(ProviderName provider, AssetKind kind, bool user) => (provider, kind, user) switch
+    {
+        (ProviderName.Claude, AssetKind.Agents, _) => T(".claude/agents/demo.md", InstallMode.RenderAgent, true),
+        (ProviderName.Claude, AssetKind.Skills, _) => T(".claude/skills/demo", InstallMode.CopyTree),
+        (ProviderName.Claude, AssetKind.Hooks, _) => T(".claude/settings.json", InstallMode.MergeHook),
+        (ProviderName.Claude, AssetKind.Mcp, false) => T(".mcp.json", InstallMode.MergeMcp),
+        (ProviderName.Claude, AssetKind.Mcp, true) => T(".claude.json", InstallMode.MergeMcp),
+        (ProviderName.Claude, AssetKind.Instructions, false) => T("CLAUDE.md", InstallMode.CopyTree, true),
+        (ProviderName.Claude, AssetKind.Instructions, true) => T(".claude/CLAUDE.md", InstallMode.CopyTree, true),
+        (ProviderName.Claude, AssetKind.Rules, _) => T(".claude/rules/demo.md", InstallMode.CopyTree, true),
+        (ProviderName.Claude, AssetKind.Prompts, _) => T(".claude/commands/demo.md", InstallMode.CopyTree, true),
+        (ProviderName.Claude, AssetKind.Tools or AssetKind.Templates, _) => null,
+
+        (ProviderName.Codex, AssetKind.Agents, _) => T(".codex/agents/demo.toml", InstallMode.RenderAgent, true),
+        (ProviderName.Codex, AssetKind.Skills, _) => T(".agents/skills/demo", InstallMode.CopyTree),
+        (ProviderName.Codex, AssetKind.Hooks, _) => T(".codex/hooks.json", InstallMode.MergeHook),
+        (ProviderName.Codex, AssetKind.Mcp, _) => T(".codex/config.toml", InstallMode.MergeMcp),
+        (ProviderName.Codex, AssetKind.Instructions, false) => T("AGENTS.md", InstallMode.CopyTree, true),
+        (ProviderName.Codex, AssetKind.Instructions, true) => T(".codex/AGENTS.md", InstallMode.CopyTree, true),
+        (ProviderName.Codex, AssetKind.Prompts, false) => null,
+        (ProviderName.Codex, AssetKind.Prompts, true) => T(".codex/prompts/demo.md", InstallMode.CopyTree, true),
+        (ProviderName.Codex, AssetKind.Rules or AssetKind.Tools or AssetKind.Templates, _) => null,
+
+        (ProviderName.Copilot, AssetKind.Agents, false) => T(".github/agents/demo.agent.md", InstallMode.RenderAgent, true),
+        (ProviderName.Copilot, AssetKind.Agents, true) => T(".copilot/agents/demo.agent.md", InstallMode.RenderAgent, true),
+        (ProviderName.Copilot, AssetKind.Skills, false) => T(".github/skills/demo", InstallMode.CopyTree),
+        (ProviderName.Copilot, AssetKind.Skills, true) => T(".copilot/skills/demo", InstallMode.CopyTree),
+        (ProviderName.Copilot, AssetKind.Hooks, false) => T(".github/hooks/demo.json", InstallMode.MergeHook),
+        (ProviderName.Copilot, AssetKind.Hooks, true) => T(".copilot/hooks/demo.json", InstallMode.MergeHook),
+        (ProviderName.Copilot, AssetKind.Mcp, false) => T(".github/mcp.json", InstallMode.MergeMcp),
+        (ProviderName.Copilot, AssetKind.Mcp, true) => T(".copilot/mcp-config.json", InstallMode.MergeMcp),
+        (ProviderName.Copilot, AssetKind.Instructions, false) => T(".github/copilot-instructions.md", InstallMode.CopyTree, true),
+        (ProviderName.Copilot, AssetKind.Instructions, true) => T(".copilot/copilot-instructions.md", InstallMode.CopyTree, true),
+        (ProviderName.Copilot, AssetKind.Prompts, false) => T(".github/prompts/demo.prompt.md", InstallMode.CopyTree, true),
+        (ProviderName.Copilot, AssetKind.Prompts, true) => null,
+        (ProviderName.Copilot, AssetKind.Rules or AssetKind.Tools or AssetKind.Templates, _) => null,
+
+        (ProviderName.Cursor, AssetKind.Agents, _) => T(".cursor/agents/demo.md", InstallMode.RenderAgent, true),
+        (ProviderName.Cursor, AssetKind.Skills, _) => T(".cursor/skills/demo", InstallMode.CopyTree),
+        (ProviderName.Cursor, AssetKind.Hooks, _) => T(".cursor/hooks.json", InstallMode.MergeHook),
+        (ProviderName.Cursor, AssetKind.Mcp, _) => T(".cursor/mcp.json", InstallMode.MergeMcp),
+        (ProviderName.Cursor, AssetKind.Instructions, false) => T("AGENTS.md", InstallMode.CopyTree, true),
+        (ProviderName.Cursor, AssetKind.Instructions, true) => null,
+        (ProviderName.Cursor, AssetKind.Rules, false) => T(".cursor/rules/demo.mdc", InstallMode.CopyTree, true),
+        (ProviderName.Cursor, AssetKind.Rules, true) => null,
+        (ProviderName.Cursor, AssetKind.Prompts, false) => T(".cursor/commands/demo.md", InstallMode.CopyTree, true),
+        (ProviderName.Cursor, AssetKind.Prompts, true) => null,
+        (ProviderName.Cursor, AssetKind.Tools or AssetKind.Templates, _) => null,
+        _ => throw new InvalidOperationException($"Provider matrix has no declaration for {provider}/{kind}/{(user ? "user" : "project")}.")
+    };
+
+    private static ExpectedTarget T(string path, InstallMode mode, bool fileTarget = false) =>
+        new(path, mode, fileTarget);
 
     [Fact]
     public void ToolsAndTemplatesAreUnsupportedEverywhere()

@@ -262,6 +262,8 @@ public sealed class Installer
                             .Distinct(StringComparer.OrdinalIgnoreCase)
                             .Order(StringComparer.OrdinalIgnoreCase)
                             .ToList();
+                        if (item.Target.Mode == InstallMode.MergeHook)
+                            current.SupportChecksum ??= HookSupportChecksum(root, item.Provider, item.Asset.Id, scope);
                     }
                     results.Add(new ApplyResult(item, ApplyOutcome.AlreadyUpToDate));
                     continue;
@@ -290,6 +292,9 @@ public sealed class Installer
                     InstallMode = item.Target.Mode,
                     SourceChecksum = SourceChecksum(loaded, item.Asset, sourcePath),
                     InstalledChecksum = installedChecksum,
+                    SupportChecksum = item.Target.Mode == InstallMode.MergeHook
+                        ? HookSupportChecksum(root, item.Provider, item.Asset.Id, scope)
+                        : null,
                     Pinned = item.Existing?.Pinned ?? false,
                     Direct = (item.Existing?.Direct ?? false) || item.Direct,
                     RequiredBy = (item.Existing?.RequiredBy ?? [])
@@ -349,7 +354,8 @@ public sealed class Installer
         IReadOnlyList<ProviderName>? providers,
         InstallScope scope,
         bool force = false,
-        bool keepLocal = false)
+        bool keepLocal = false,
+        LoadedCatalog? loaded = null)
     {
         var lockPath = _paths.GetLockPath(scope);
         using var scopeLock = ScopeLock.Acquire(Path.GetDirectoryName(lockPath)!);
@@ -364,9 +370,26 @@ public sealed class Installer
         foreach (var entry in matches)
         {
             var installedPath = ResolveLockPath(entry.Path, root);
-            var modified = entry.InstallMode != InstallMode.MergeMcp &&
-                (File.Exists(installedPath) || Directory.Exists(installedPath)) &&
-                !ContentHash.Compute(installedPath).Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase);
+            var exists = File.Exists(installedPath) || Directory.Exists(installedPath);
+            var currentChecksum = entry.InstallMode switch
+            {
+                InstallMode.MergeMcp when exists && loaded is not null &&
+                    loaded.Catalog.Assets.FirstOrDefault(x =>
+                        x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp
+                        => McpMerger.CurrentChecksum(mcp, installedPath,
+                            new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true), scope,
+                            _resolver.TryResolve(loaded, mcp)),
+                // Without the catalog asset we cannot identify the owned server keys safely.
+                // Fail closed instead of reporting an unverifiable shared fragment as clean.
+                InstallMode.MergeMcp => "",
+                InstallMode.MergeHook when exists => HookMerger.CurrentChecksum(
+                    entry.Id, installedPath, entry.Provider, root, scope),
+                _ when exists => ContentHash.Compute(installedPath),
+                _ => ""
+            };
+            var modified = exists &&
+                (!currentChecksum.Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase) ||
+                 HookSupportWasModified(entry, root, scope));
             if (modified && !force && !keepLocal)
             {
                 throw new AgentPackException(
@@ -405,7 +428,20 @@ public sealed class Installer
                 (entry.InstallMode == InstallMode.MergeHook && HookMerger.IsSharedConfigFile(entry.Provider));
             if (isSharedConfig)
             {
-                // Shared provider config files are never deleted; only the lock entry goes.
+                if (entry.InstallMode == InstallMode.MergeHook)
+                {
+                    HookMerger.Remove(entry.Id, entry.Provider, installedPath, root, scope,
+                        existing => Backup(existing, scope));
+                }
+                else if (loaded?.Catalog.Assets.FirstOrDefault(x =>
+                             x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp)
+                {
+                    var target = new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true);
+                    McpMerger.Remove(mcp, installedPath, target, scope, existing => Backup(existing, scope),
+                        _resolver.TryResolve(loaded, mcp));
+                }
+
+                // The shared file remains; only AgentPack's owned fragment is removed.
                 lockFile.Entries.Remove(entry);
                 DeleteManagedSnapshot(entry);
                 continue;
@@ -453,13 +489,20 @@ public sealed class Installer
         {
             var path = ResolveLockPath(entry.Path, root);
             var exists = File.Exists(path) || Directory.Exists(path);
-            var currentChecksum = entry.InstallMode == InstallMode.MergeMcp && loaded is not null &&
-                loaded.Catalog.Assets.FirstOrDefault(x => x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp
-                    ? McpMerger.CurrentChecksum(mcp, path,
-                        new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true), scope,
-                        _resolver.TryResolve(loaded, mcp))
-                    : exists ? ContentHash.Compute(path) : "";
-            if (exists && !currentChecksum.Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase))
+            var currentChecksum = entry.InstallMode switch
+            {
+                InstallMode.MergeMcp when loaded is not null &&
+                    loaded.Catalog.Assets.FirstOrDefault(x => x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp
+                        => McpMerger.CurrentChecksum(mcp, path,
+                            new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true), scope,
+                            _resolver.TryResolve(loaded, mcp)),
+                InstallMode.MergeHook when exists => HookMerger.CurrentChecksum(entry.Id, path, entry.Provider, root, scope),
+                _ when exists => ContentHash.Compute(path),
+                _ => ""
+            };
+            if (exists &&
+                (!currentChecksum.Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase) ||
+                 HookSupportWasModified(entry, root, scope)))
                 modified.Add(entry);
             else
                 clean.Add(entry);
@@ -476,6 +519,17 @@ public sealed class Installer
                     var target = new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true);
                     McpMerger.Remove(mcp, path, target, scope, existing => Backup(existing, scope),
                         _resolver.TryResolve(loaded, mcp));
+                }
+                else if (entry.InstallMode == InstallMode.MergeHook)
+                {
+                    HookMerger.Remove(entry.Id, entry.Provider, path, root, scope, existing => Backup(existing, scope));
+                    var supportPath = Path.GetFullPath(Path.Combine(root,
+                        HookMerger.SupportRelativePath(entry.Provider, entry.Id, scope)));
+                    if (Directory.Exists(supportPath))
+                    {
+                        Backup(supportPath, scope);
+                        Directory.Delete(supportPath, recursive: true);
+                    }
                 }
                 else if (entry.InstallMode is not (InstallMode.MergeMcp or InstallMode.MergeHook) &&
                     (File.Exists(path) || Directory.Exists(path)))
@@ -554,6 +608,33 @@ public sealed class Installer
 
     public string ScopeRoot(InstallScope scope) => scope == InstallScope.User ? _paths.ProviderHome : _paths.WorkingDirectory;
 
+    /// <summary>Inspects only the fragment owned by a lock entry inside shared provider files.</summary>
+    public InstallState InspectInstalled(LockEntry entry, LoadedCatalog? loaded, InstallScope scope)
+    {
+        var root = ScopeRoot(scope);
+        var path = ResolveLockPath(entry.Path, root);
+        if (!File.Exists(path) && !Directory.Exists(path)) return InstallState.Missing;
+
+        var currentChecksum = entry.InstallMode switch
+        {
+            InstallMode.MergeMcp when loaded?.Catalog.Assets.FirstOrDefault(x =>
+                x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp
+                    => McpMerger.CurrentChecksum(mcp, path,
+                        new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true), scope,
+                        _resolver.TryResolve(loaded, mcp)),
+            // The server ids come from catalog metadata. Missing metadata is
+            // unverifiable drift, never an automatic "clean" result.
+            InstallMode.MergeMcp => "",
+            InstallMode.MergeHook => HookMerger.CurrentChecksum(entry.Id, path, entry.Provider, root, scope),
+            _ => ContentHash.Compute(path)
+        };
+
+        return currentChecksum.Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase) &&
+               !HookSupportWasModified(entry, root, scope)
+            ? InstallState.Installed
+            : InstallState.LocalChanges;
+    }
+
     public static string ResolveLockPath(string entryPath, string root) =>
         Path.IsPathRooted(entryPath) ? entryPath : Path.GetFullPath(Path.Combine(root, entryPath));
 
@@ -597,10 +678,14 @@ public sealed class Installer
         var installedPath = ResolveLockPath(existing.Path, root);
         if (!File.Exists(installedPath) && !Directory.Exists(installedPath)) return InstallState.Missing;
 
-        var actual = target.Mode == InstallMode.MergeMcp
-            ? McpMerger.CurrentChecksum(asset, installedPath, target, scope, sourcePath)
-            : ContentHash.Compute(installedPath);
+        var actual = target.Mode switch
+        {
+            InstallMode.MergeMcp => McpMerger.CurrentChecksum(asset, installedPath, target, scope, sourcePath),
+            InstallMode.MergeHook => HookMerger.CurrentChecksum(asset, installedPath, target.Provider, root, scope),
+            _ => ContentHash.Compute(installedPath)
+        };
         if (!actual.Equals(existing.InstalledChecksum, StringComparison.OrdinalIgnoreCase)) return InstallState.LocalChanges;
+        if (HookSupportWasModified(existing, root, scope)) return InstallState.LocalChanges;
         if (sourceChecksum is not null && !sourceChecksum.Equals(existing.SourceChecksum, StringComparison.OrdinalIgnoreCase))
             return existing.Pinned ? InstallState.Pinned : InstallState.UpdateAvailable;
         if (renderFingerprint is not null && !renderFingerprint.Equals(existing.RenderFingerprint, StringComparison.OrdinalIgnoreCase))
@@ -712,6 +797,18 @@ public sealed class Installer
             : "";
     }
 
+    private static string HookSupportChecksum(string root, ProviderName provider, string assetId, InstallScope scope)
+    {
+        var path = Path.Combine(root, HookMerger.SupportRelativePath(provider, assetId, scope));
+        return File.Exists(path) || Directory.Exists(path) ? ContentHash.Compute(path) : "";
+    }
+
+    private static bool HookSupportWasModified(LockEntry entry, string root, InstallScope scope) =>
+        entry.InstallMode == InstallMode.MergeHook &&
+        entry.SupportChecksum is not null &&
+        !HookSupportChecksum(root, entry.Provider, entry.Id, scope)
+            .Equals(entry.SupportChecksum, StringComparison.OrdinalIgnoreCase);
+
     private static string? EffectiveSourceChecksum(LoadedCatalog loaded, Asset asset, string? sourcePath)
     {
         var declared = loaded.EffectiveChecksum(asset);
@@ -751,11 +848,16 @@ public sealed class Installer
             return;
         }
 
-        var lines = File.ReadAllLines(gitIgnore);
-        if (!lines.Contains(".lock"))
+        var lines = File.ReadAllLines(gitIgnore).ToList();
+        var changed = false;
+        foreach (var required in new[] { "backups/", ".lock" })
         {
-            File.AppendAllText(gitIgnore, ".lock\n");
+            if (lines.Contains(required, StringComparer.Ordinal)) continue;
+            lines.Add(required);
+            changed = true;
         }
+
+        if (changed) AtomicWrite.Text(gitIgnore, string.Join(Environment.NewLine, lines) + Environment.NewLine);
     }
 
     private static void DeleteExisting(string path)

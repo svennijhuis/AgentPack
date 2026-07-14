@@ -126,7 +126,7 @@ public sealed record LoadedCatalog(
         {
             foreach (var root in CatalogRoots.Reverse())
             {
-                var candidate = Path.GetFullPath(Path.Combine(root, local.RelativePath));
+                var candidate = PathSafety.ResolveUnderRoot(root, local.RelativePath, $"Local asset '{asset.Id}'");
                 if (File.Exists(candidate) || Directory.Exists(candidate)) return root;
             }
         }

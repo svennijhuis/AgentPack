@@ -3,8 +3,8 @@ using static AgentPack.Core.AdapterHelpers;
 namespace AgentPack.Core;
 
 /// <summary>
-/// GitHub Copilot (VS Code + Copilot CLI). Project MCP servers merge into
-/// .vscode/mcp.json (root key "servers"); user-scope MCP goes to the Copilot CLI
+/// GitHub Copilot (cloud + CLI). Project MCP servers merge into
+/// .github/mcp.json; user-scope MCP goes to the Copilot CLI
 /// config ~/.copilot/mcp-config.json. Hooks are one JSON file per hook under
 /// .github/hooks/ (project) or ~/.copilot/hooks/ (user).
 /// See docs/provider-mapping.md for the audited matrix.
@@ -19,6 +19,7 @@ public sealed class CopilotAdapter : IProviderAdapter
         Exists(root, ".github", "prompts") ||
         Exists(root, ".github", "agents") ||
         Exists(root, ".github", "hooks") ||
+        Exists(root, ".github", "mcp.json") ||
         Exists(root, ".vscode", "mcp.json");
 
     public ProviderPlan Plan(Asset asset, bool userScope)
@@ -35,11 +36,11 @@ public sealed class CopilotAdapter : IProviderAdapter
 
             AssetKind.Mcp => userScope
                 ? Supported(Name, asset, Path.Combine(".copilot", "mcp-config.json"), InstallMode.MergeMcp)
-                : Supported(Name, asset, Path.Combine(".vscode", "mcp.json"), InstallMode.MergeMcp),
+                : Supported(Name, asset, Path.Combine(".github", "mcp.json"), InstallMode.MergeMcp),
 
             AssetKind.Instructions => userScope
-                ? Unsupported("Copilot user-scope instructions are managed in the editor, not on disk.")
-                : Supported(Name, asset, Path.Combine(".github", "instructions", asset.Id + ".instructions.md"), InstallMode.CopyTree, isFileTarget: true),
+                ? Supported(Name, asset, Path.Combine(".copilot", "copilot-instructions.md"), InstallMode.CopyTree, isFileTarget: true)
+                : Supported(Name, asset, Path.Combine(".github", "copilot-instructions.md"), InstallMode.CopyTree, isFileTarget: true),
 
             AssetKind.Prompts => userScope
                 ? Unsupported("Copilot user-scope prompt files are managed in the editor, not on disk.")

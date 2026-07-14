@@ -192,7 +192,7 @@ flowchart TD
 
     MCP --> M1["Claude: .mcp.json<br/>env: dollar-brace VAR"]
     MCP --> M2["Codex: .codex/config.toml<br/>env_vars = [names]"]
-    MCP --> M3["Copilot: .vscode/mcp.json servers key<br/>env: dollar-brace env:VAR"]
+    MCP --> M3["Copilot CLI: .github/mcp.json<br/>mcpServers; env: dollar-brace VAR"]
     MCP --> M4["Cursor: .cursor/mcp.json<br/>env: dollar-brace env:VAR"]
 
     SKILL --> S1["Claude: .claude/skills/grill-me/"]

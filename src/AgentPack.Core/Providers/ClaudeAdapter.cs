@@ -34,7 +34,8 @@ public sealed class ClaudeAdapter : IProviderAdapter
 
             AssetKind.Prompts => Supported(Name, asset, Path.Combine(".claude", "commands", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
 
-            AssetKind.Rules => Unsupported("Claude Code has no rules files — use an instructions asset (CLAUDE.md) instead."),
+            AssetKind.Rules => Supported(Name, asset,
+                Path.Combine(".claude", "rules", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
             AssetKind.Tools => Unsupported("Claude Code has no generic tools directory."),
             AssetKind.Templates => Unsupported("Claude Code has no templates directory."),
             _ => Unsupported($"Claude Code does not support {asset.Kind.Display()}.")

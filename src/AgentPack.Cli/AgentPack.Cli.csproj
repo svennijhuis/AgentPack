@@ -13,7 +13,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>agentpack</ToolCommandName>
     <PackageId>AgentPack</PackageId>
-    <Version>0.3.0</Version>
+    <Version>1.0.0</Version>
     <Authors>AgentPack</Authors>
     <Description>Organization AI asset package manager for native agents, skills, hooks, MCP, instructions, rules, prompts, and profiles.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

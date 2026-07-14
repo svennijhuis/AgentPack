@@ -382,7 +382,7 @@ public class InstallerTests
     }
 
     [Fact]
-    public void MissingMcpCatalogMetadataFailsClosedForDiffAndRemove()
+    public void RecordedMcpFragmentWorksWithoutCatalogMetadataForDiffAndRemove()
     {
         using var temp = new TempDir();
         var paths = TestData.Paths(temp);
@@ -395,11 +395,9 @@ public class InstallerTests
         var entry = Assert.Single(JsonStore.Load<AgentPackLock>(paths.ProjectLockPath).Entries);
         var catalogWithoutAsset = TestData.Loaded(paths.WorkingDirectory);
 
-        Assert.Equal(InstallState.LocalChanges,
+        Assert.Equal(InstallState.Installed,
             installer.InspectInstalled(entry, catalogWithoutAsset, InstallScope.Project));
-        var ex = Assert.Throws<AgentPackException>(() =>
-            installer.Remove(null, ["github"], null, InstallScope.Project, loaded: catalogWithoutAsset));
-        Assert.Equal(ExitCodes.DriftOrConflict, ex.ExitCode);
-        Assert.Contains("github", File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".mcp.json")));
+        installer.Remove(null, ["github"], null, InstallScope.Project, loaded: catalogWithoutAsset);
+        Assert.DoesNotContain("github", File.ReadAllText(Path.Combine(paths.WorkingDirectory, ".mcp.json")));
     }
 }

@@ -253,6 +253,7 @@ public sealed class Installer
 
                 if (item.State == InstallState.Installed)
                 {
+                    BackfillFragment(item, lockFile, root, scope);
                     var current = lockFile.Find(item.Asset.Id, item.Provider, item.Asset.Kind);
                     if (current is not null)
                     {
@@ -270,9 +271,11 @@ public sealed class Installer
                 }
 
                 var sourcePath = sources[item];
-                var installedChecksum = item.State == InstallState.Adoptable || stagedAdoptions.Contains(item)
-                    ? ContentHash.Compute(item.TargetPath)
-                    : ApplyItem(item, sourcePath, root, scope, loaded, renderedAgents.GetValueOrDefault(item));
+                var installed = item.State == InstallState.Adoptable || stagedAdoptions.Contains(item)
+                    ? new MergeResult(ContentHash.Compute(item.TargetPath), "")
+                    : ApplyItem(item, sourcePath, root, scope, loaded,
+                        renderedAgents.GetValueOrDefault(item),
+                        overwriteModified: item.State == InstallState.LocalChanges);
                 var managedSnapshot = ManagedSnapshotPath(scope, item);
                 DeleteExisting(managedSnapshot);
                 ContentHash.CopyTree(item.TargetPath, managedSnapshot);
@@ -291,7 +294,10 @@ public sealed class Installer
                     Path = Path.GetRelativePath(root, item.TargetPath).Replace(Path.DirectorySeparatorChar, '/'),
                     InstallMode = item.Target.Mode,
                     SourceChecksum = SourceChecksum(loaded, item.Asset, sourcePath),
-                    InstalledChecksum = installedChecksum,
+                    InstalledChecksum = installed.Checksum,
+                    Fragment = item.Target.Mode is InstallMode.MergeMcp or InstallMode.MergeHook
+                        ? installed.Fragment
+                        : null,
                     SupportChecksum = item.Target.Mode == InstallMode.MergeHook
                         ? HookSupportChecksum(root, item.Provider, item.Asset.Id, scope)
                         : null,
@@ -371,24 +377,8 @@ public sealed class Installer
         {
             var installedPath = ResolveLockPath(entry.Path, root);
             var exists = File.Exists(installedPath) || Directory.Exists(installedPath);
-            var currentChecksum = entry.InstallMode switch
-            {
-                InstallMode.MergeMcp when exists && loaded is not null &&
-                    loaded.Catalog.Assets.FirstOrDefault(x =>
-                        x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp
-                        => McpMerger.CurrentChecksum(mcp, installedPath,
-                            new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true), scope,
-                            _resolver.TryResolve(loaded, mcp)),
-                // Without the catalog asset we cannot identify the owned server keys safely.
-                // Fail closed instead of reporting an unverifiable shared fragment as clean.
-                InstallMode.MergeMcp => "",
-                InstallMode.MergeHook when exists => HookMerger.CurrentChecksum(
-                    entry.Id, installedPath, entry.Provider, root, scope),
-                _ when exists => ContentHash.Compute(installedPath),
-                _ => ""
-            };
             var modified = exists &&
-                (!currentChecksum.Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase) ||
+                (InstalledFragmentState(entry, installedPath, scope) == FragmentState.Modified ||
                  HookSupportWasModified(entry, root, scope));
             if (modified && !force && !keepLocal)
             {
@@ -428,17 +418,15 @@ public sealed class Installer
                 (entry.InstallMode == InstallMode.MergeHook && HookMerger.IsSharedConfigFile(entry.Provider));
             if (isSharedConfig)
             {
-                if (entry.InstallMode == InstallMode.MergeHook)
+                if (entry.Fragment is not null && File.Exists(installedPath) && entry.InstallMode == InstallMode.MergeHook)
                 {
-                    HookMerger.Remove(entry.Id, entry.Provider, installedPath, root, scope,
+                    HookMerger.RemoveFragment(installedPath, entry.Provider, entry.Fragment,
                         existing => Backup(existing, scope));
                 }
-                else if (loaded?.Catalog.Assets.FirstOrDefault(x =>
-                             x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp)
+                else if (entry.Fragment is not null && File.Exists(installedPath) && entry.InstallMode == InstallMode.MergeMcp)
                 {
-                    var target = new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true);
-                    McpMerger.Remove(mcp, installedPath, target, scope, existing => Backup(existing, scope),
-                        _resolver.TryResolve(loaded, mcp));
+                    McpMerger.RemoveFragment(installedPath, entry.Provider, scope, entry.Fragment,
+                        existing => Backup(existing, scope));
                 }
 
                 // The shared file remains; only AgentPack's owned fragment is removed.
@@ -489,19 +477,8 @@ public sealed class Installer
         {
             var path = ResolveLockPath(entry.Path, root);
             var exists = File.Exists(path) || Directory.Exists(path);
-            var currentChecksum = entry.InstallMode switch
-            {
-                InstallMode.MergeMcp when loaded is not null &&
-                    loaded.Catalog.Assets.FirstOrDefault(x => x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp
-                        => McpMerger.CurrentChecksum(mcp, path,
-                            new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true), scope,
-                            _resolver.TryResolve(loaded, mcp)),
-                InstallMode.MergeHook when exists => HookMerger.CurrentChecksum(entry.Id, path, entry.Provider, root, scope),
-                _ when exists => ContentHash.Compute(path),
-                _ => ""
-            };
             if (exists &&
-                (!currentChecksum.Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase) ||
+                (InstalledFragmentState(entry, path, scope) == FragmentState.Modified ||
                  HookSupportWasModified(entry, root, scope)))
                 modified.Add(entry);
             else
@@ -513,16 +490,24 @@ public sealed class Installer
             foreach (var entry in clean)
             {
                 var path = ResolveLockPath(entry.Path, root);
-                if (entry.InstallMode == InstallMode.MergeMcp && loaded is not null &&
-                    loaded.Catalog.Assets.FirstOrDefault(x => x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp)
+                if (entry.InstallMode == InstallMode.MergeMcp && entry.Fragment is not null && File.Exists(path))
                 {
-                    var target = new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true);
-                    McpMerger.Remove(mcp, path, target, scope, existing => Backup(existing, scope),
-                        _resolver.TryResolve(loaded, mcp));
+                    McpMerger.RemoveFragment(path, entry.Provider, scope, entry.Fragment,
+                        existing => Backup(existing, scope));
                 }
                 else if (entry.InstallMode == InstallMode.MergeHook)
                 {
-                    HookMerger.Remove(entry.Id, entry.Provider, path, root, scope, existing => Backup(existing, scope));
+                    if (entry.Fragment is not null && File.Exists(path) && HookMerger.IsSharedConfigFile(entry.Provider))
+                    {
+                        HookMerger.RemoveFragment(path, entry.Provider, entry.Fragment,
+                            existing => Backup(existing, scope));
+                    }
+                    else if (!HookMerger.IsSharedConfigFile(entry.Provider) &&
+                             (File.Exists(path) || Directory.Exists(path)))
+                    {
+                        Backup(path, scope);
+                        DeleteExisting(path);
+                    }
                     var supportPath = Path.GetFullPath(Path.Combine(root,
                         HookMerger.SupportRelativePath(entry.Provider, entry.Id, scope)));
                     if (Directory.Exists(supportPath))
@@ -615,21 +600,7 @@ public sealed class Installer
         var path = ResolveLockPath(entry.Path, root);
         if (!File.Exists(path) && !Directory.Exists(path)) return InstallState.Missing;
 
-        var currentChecksum = entry.InstallMode switch
-        {
-            InstallMode.MergeMcp when loaded?.Catalog.Assets.FirstOrDefault(x =>
-                x.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) && x.Kind == AssetKind.Mcp) is { } mcp
-                    => McpMerger.CurrentChecksum(mcp, path,
-                        new InstallTarget(entry.Provider, entry.Kind, entry.Path, entry.InstallMode, true), scope,
-                        _resolver.TryResolve(loaded, mcp)),
-            // The server ids come from catalog metadata. Missing metadata is
-            // unverifiable drift, never an automatic "clean" result.
-            InstallMode.MergeMcp => "",
-            InstallMode.MergeHook => HookMerger.CurrentChecksum(entry.Id, path, entry.Provider, root, scope),
-            _ => ContentHash.Compute(path)
-        };
-
-        return currentChecksum.Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase) &&
+        return InstalledFragmentState(entry, path, scope) == FragmentState.Present &&
                !HookSupportWasModified(entry, root, scope)
             ? InstallState.Installed
             : InstallState.LocalChanges;
@@ -670,7 +641,8 @@ public sealed class Installer
     {
         if (existing is null)
         {
-            return File.Exists(targetPath) || Directory.Exists(targetPath)
+            return target.Mode is InstallMode.CopyTree or InstallMode.RenderAgent &&
+                   (File.Exists(targetPath) || Directory.Exists(targetPath))
                 ? InstallState.UnmanagedPresent
                 : InstallState.Available;
         }
@@ -678,13 +650,13 @@ public sealed class Installer
         var installedPath = ResolveLockPath(existing.Path, root);
         if (!File.Exists(installedPath) && !Directory.Exists(installedPath)) return InstallState.Missing;
 
-        var actual = target.Mode switch
+        switch (InstalledFragmentState(existing, installedPath, scope))
         {
-            InstallMode.MergeMcp => McpMerger.CurrentChecksum(asset, installedPath, target, scope, sourcePath),
-            InstallMode.MergeHook => HookMerger.CurrentChecksum(asset, installedPath, target.Provider, root, scope),
-            _ => ContentHash.Compute(installedPath)
-        };
-        if (!actual.Equals(existing.InstalledChecksum, StringComparison.OrdinalIgnoreCase)) return InstallState.LocalChanges;
+            case FragmentState.Absent:
+                return InstallState.Missing;
+            case FragmentState.Modified:
+                return InstallState.LocalChanges;
+        }
         if (HookSupportWasModified(existing, root, scope)) return InstallState.LocalChanges;
         if (sourceChecksum is not null && !sourceChecksum.Equals(existing.SourceChecksum, StringComparison.OrdinalIgnoreCase))
             return existing.Pinned ? InstallState.Pinned : InstallState.UpdateAvailable;
@@ -740,13 +712,14 @@ public sealed class Installer
         return sourcePath;
     }
 
-    private string ApplyItem(
+    private MergeResult ApplyItem(
         InstallPlanItem item,
         string sourcePath,
         string root,
         InstallScope scope,
         LoadedCatalog loaded,
-        string? stagedAgent = null)
+        string? stagedAgent = null,
+        bool overwriteModified = false)
     {
         switch (item.Target.Mode)
         {
@@ -755,16 +728,17 @@ public sealed class Installer
                 if (File.Exists(item.TargetPath) &&
                     ContentHash.Compute(item.TargetPath).Equals(ContentHash.ComputeText(rendered), StringComparison.OrdinalIgnoreCase))
                 {
-                    return ContentHash.Compute(item.TargetPath);
+                    return new MergeResult(ContentHash.Compute(item.TargetPath), "");
                 }
                 if (File.Exists(item.TargetPath) || Directory.Exists(item.TargetPath)) Backup(item.TargetPath, scope);
                 DeleteExisting(item.TargetPath);
                 AtomicWrite.Text(item.TargetPath, rendered);
-                return ContentHash.Compute(item.TargetPath);
+                return new MergeResult(ContentHash.Compute(item.TargetPath), "");
 
             case InstallMode.MergeMcp:
                 return McpMerger.Apply(item.Asset, string.IsNullOrWhiteSpace(sourcePath) ? null : sourcePath,
-                    item.Target, item.TargetPath, scope, path => Backup(path, scope));
+                    item.Target, item.TargetPath, scope, path => Backup(path, scope),
+                    item.Existing?.Fragment, overwriteModified);
 
             case InstallMode.MergeHook:
                 if (string.IsNullOrWhiteSpace(sourcePath))
@@ -772,7 +746,8 @@ public sealed class Installer
                     throw new AgentPackException($"Hook asset '{item.Asset.Id}' has no resolved content path.");
                 }
 
-                return HookMerger.Apply(item.Asset, sourcePath, item.Target, item.TargetPath, root, scope, path => Backup(path, scope));
+                return HookMerger.Apply(item.Asset, sourcePath, item.Target, item.TargetPath, root, scope,
+                    path => Backup(path, scope), item.Existing?.Fragment, overwriteModified);
 
             case InstallMode.CopyTree:
             default:
@@ -783,7 +758,7 @@ public sealed class Installer
                 }
 
                 ContentHash.CopyTree(sourcePath, item.TargetPath);
-                return ContentHash.Compute(item.TargetPath);
+                return new MergeResult(ContentHash.Compute(item.TargetPath), "");
         }
     }
 
@@ -809,6 +784,59 @@ public sealed class Installer
         !HookSupportChecksum(root, entry.Provider, entry.Id, scope)
             .Equals(entry.SupportChecksum, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Drift check for an installed entry. Shared provider files compare only the
+    /// fragment AgentPack owns, so unrelated user configuration never appears as drift.
+    /// </summary>
+    public static FragmentState InstalledFragmentState(LockEntry entry, string installedPath, InstallScope scope)
+    {
+        if (entry.InstallMode is InstallMode.CopyTree or InstallMode.RenderAgent)
+        {
+            return ContentHash.Compute(installedPath).Equals(entry.InstalledChecksum, StringComparison.OrdinalIgnoreCase)
+                ? FragmentState.Present
+                : FragmentState.Modified;
+        }
+
+        // Pre-1.0 entries are backfilled on the next successful apply. Until then,
+        // the shared file cannot be attributed safely, so do not report unrelated
+        // content as drift or delete it during removal.
+        if (entry.Fragment is null) return FragmentState.Present;
+
+        return entry.InstallMode == InstallMode.MergeMcp
+            ? McpMerger.CheckFragment(installedPath, entry.Provider, scope, entry.Fragment)
+            : HookMerger.CheckFragment(installedPath, entry.Provider, entry.Fragment);
+    }
+
+    private static void BackfillFragment(InstallPlanItem item, AgentPackLock lockFile, string root, InstallScope scope)
+    {
+        var entry = lockFile.Find(item.Asset.Id, item.Provider, item.Asset.Kind);
+        if (entry is null || entry.InstallMode is not (InstallMode.MergeMcp or InstallMode.MergeHook) ||
+            entry.Fragment is not null) return;
+
+        var installedPath = ResolveLockPath(entry.Path, root);
+        if (!File.Exists(installedPath)) return;
+
+        string fragment;
+        try
+        {
+            fragment = entry.InstallMode == InstallMode.MergeMcp
+                ? McpMerger.ComputeFragment(item.Asset, item.SourcePath, item.Provider, scope)
+                : HookMerger.ComputeFragment(item.Asset, item.Target, root, scope);
+        }
+        catch (AgentPackException)
+        {
+            return;
+        }
+
+        var state = entry.InstallMode == InstallMode.MergeMcp
+            ? McpMerger.CheckFragment(installedPath, entry.Provider, scope, fragment)
+            : HookMerger.CheckFragment(installedPath, entry.Provider, fragment);
+        if (state != FragmentState.Present) return;
+
+        entry.Fragment = fragment;
+        entry.InstalledChecksum = ContentHash.OfText(fragment);
+    }
+
     private static string? EffectiveSourceChecksum(LoadedCatalog loaded, Asset asset, string? sourcePath)
     {
         var declared = loaded.EffectiveChecksum(asset);
@@ -818,13 +846,38 @@ public sealed class Installer
             : null;
     }
 
+    private const int BackupsToKeep = 20;
+
     private void Backup(string path, InstallScope scope)
     {
         var root = scope == InstallScope.User ? _paths.Home : Path.Combine(_paths.WorkingDirectory, ".agentpack");
-        var backupRoot = Path.Combine(root, "backups", DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff"));
+        var backupsRoot = Path.Combine(root, "backups");
+        var backupRoot = Path.Combine(backupsRoot, DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff"));
         var target = Path.Combine(backupRoot, ContentHash.ShortKey(Path.GetFullPath(path)),
             Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)));
         ContentHash.CopyTree(path, target);
+        PruneBackups(backupsRoot);
+    }
+
+    private static void PruneBackups(string backupsRoot)
+    {
+        var stale = Directory.EnumerateDirectories(backupsRoot)
+            .OrderByDescending(x => Path.GetFileName(x), StringComparer.Ordinal)
+            .Skip(BackupsToKeep);
+        foreach (var directory in stale)
+        {
+            try
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A locked or vanished backup folder never blocks the install itself.
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
     }
 
     private string ManagedSnapshotPath(InstallScope scope, InstallPlanItem item) =>

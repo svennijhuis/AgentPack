@@ -93,6 +93,6 @@ public static class TestData
         Directory.CreateDirectory(work);
         var home = System.IO.Path.Combine(dir.Path, "home", ".agentpack");
         Directory.CreateDirectory(home);
-        return new AgentPackPaths(home, work);
+        return new AgentPackPaths(home, work, providerHome: System.IO.Path.Combine(dir.Path, "home"));
     }
 }

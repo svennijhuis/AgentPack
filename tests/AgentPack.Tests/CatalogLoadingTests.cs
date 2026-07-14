@@ -217,9 +217,9 @@ public class CatalogLoadingTests
         var catalogRepo = Path.Combine(temp.Path, "org-catalog");
         WriteMinimalCatalog(catalogRepo);
         WriteAsset(catalogRepo, "skills", "org-skill", "name: Org Skill\nversion: 1.0.0\n");
-        Run("git", "init -q -b main", catalogRepo);
-        Run("git", "add -A", catalogRepo);
-        Run("git", "-c user.email=t@t -c user.name=t commit -q -m init", catalogRepo);
+        Run("git", ["init", "-q", "-b", "main"], catalogRepo);
+        Run("git", ["add", "-A"], catalogRepo);
+        Run("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"], catalogRepo);
 
         // A consuming repo with no catalog.yaml and no prior 'source sync'.
         var paths = TestData.Paths(temp, "consumer");
@@ -230,7 +230,7 @@ public class CatalogLoadingTests
         Assert.Contains(loaded.Catalog.Assets, x => x.Id == "org-skill");
     }
 
-    private static void Run(string file, string args, string cwd)
+    private static void Run(string file, string[] args, string cwd)
     {
         var result = AgentPack.Core.ProcessRunner.Run(file, args, cwd);
         Assert.Equal(0, result.ExitCode);

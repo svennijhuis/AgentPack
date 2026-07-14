@@ -83,13 +83,13 @@ public class ExternalAssetContractTests
         using var temp = new TempDir();
         var repo = Path.Combine(temp.Path, "upstream.git");
         Directory.CreateDirectory(repo);
-        Git(repo, "init");
-        Git(repo, "config user.email agentpack@example.test");
-        Git(repo, "config user.name AgentPack");
+        Git(repo, ["init"]);
+        Git(repo, ["config", "user.email", "agentpack@example.test"]);
+        Git(repo, ["config", "user.name", "AgentPack"]);
         File.WriteAllText(Path.Combine(repo, "README.md"), "not a skill\n");
-        Git(repo, "add README.md");
-        Git(repo, "commit -m initial");
-        var sha = Git(repo, "rev-parse HEAD").Trim();
+        Git(repo, ["add", "README.md"]);
+        Git(repo, ["commit", "-m", "initial"]);
+        var sha = Git(repo, ["rev-parse", "HEAD"]).Trim();
         var paths = TestData.Paths(temp, "consumer");
         var asset = TestData.Asset(AssetKind.Skills, "bad-skill",
             source: new AssetSource.External(repo, sha, null, null, "MIT"));
@@ -99,7 +99,7 @@ public class ExternalAssetContractTests
         Assert.Contains("SKILL.md", ex.Message);
     }
 
-    private static string Git(string workingDirectory, string arguments)
+    private static string Git(string workingDirectory, IReadOnlyList<string> arguments)
     {
         var result = ProcessRunner.Run("git", arguments, workingDirectory);
         Assert.True(result.ExitCode == 0, result.Error);

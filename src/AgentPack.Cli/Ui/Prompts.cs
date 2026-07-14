@@ -94,19 +94,22 @@ public static class Prompts
     /// </summary>
     public static DriftAction ResolveDrift(InstallPlanItem item, InstallScope scope, string scopeRoot)
     {
-        Output.Warning($"{item.Asset.Id} ({item.Provider.Display()}) was modified locally after install.");
+        var keepLabel = item.State == InstallState.UnmanagedPresent ? "keep the existing file" : "keep my local changes";
+        Output.Warning(item.State == InstallState.UnmanagedPresent
+            ? $"{item.Asset.Id} ({item.Provider.Display()}): the target already exists and was not installed by agentpack."
+            : $"{item.Asset.Id} ({item.Provider.Display()}) was modified locally after install.");
 
         while (true)
         {
             var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
                 .Title($"Overwrite [bold]{Markup.Escape(item.Asset.Id)}[/] with catalog version {item.Asset.Version}?")
-                .AddChoices("overwrite with catalog version", "keep my local changes", "show diff", "abort"));
+                .AddChoices("overwrite with catalog version", keepLabel, "show diff", "abort"));
 
             switch (choice)
             {
                 case "overwrite with catalog version":
                     return DriftAction.Overwrite;
-                case "keep my local changes":
+                case var _ when choice == keepLabel:
                     return DriftAction.Keep;
                 case "abort":
                     throw new AgentPackException("Aborted by user.", exitCode: ExitCodes.DriftOrConflict);

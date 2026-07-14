@@ -18,6 +18,15 @@ public class CliEndToEndTests
     }
 
     [Fact]
+    public void VersionFlagPrintsTheToolVersion()
+    {
+        using var temp = new TempDir();
+        var result = RunCli(temp, "--version");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Matches(@"\d+\.\d+\.\d+", result.Output);
+    }
+
+    [Fact]
     public void UnknownCommandSuggestsNearestAndFails()
     {
         using var temp = new TempDir();

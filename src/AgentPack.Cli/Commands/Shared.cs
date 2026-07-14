@@ -27,7 +27,7 @@ public sealed class CliSession
 
     public static bool IsGitRepo(string root) =>
         Directory.Exists(Path.Combine(root, ".git")) ||
-        ProcessRunner.Run("git", "rev-parse --is-inside-work-tree", root).ExitCode == 0;
+        ProcessRunner.Run("git", ["rev-parse", "--is-inside-work-tree"], root).ExitCode == 0;
 }
 
 /// <summary>Options shared by every command that installs, removes, or inspects installs.</summary>

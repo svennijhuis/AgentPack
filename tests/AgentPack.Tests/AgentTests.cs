@@ -72,7 +72,7 @@ public class AgentTests
         foreach (var provider in ProviderNames.All)
         {
             var language = provider == ProviderName.Codex ? "toml" : "markdown";
-            var pattern = $"<!-- agentpack-compile-example:{provider.Display()} -->\\s*```{language}\\n(?<content>.*?)\\n```";
+            var pattern = $"<!-- agentpack-compile-example:{provider.Display()} -->\\s*```{language}\\r?\\n(?<content>.*?)\\r?\\n```";
             var match = Regex.Match(markdown, pattern, RegexOptions.Singleline);
             Assert.True(match.Success, $"Missing documented {provider.Display()} compile example.");
             CatalogCompiler.ValidateSyntax(match.Groups["content"].Value + "\n", agent, provider);

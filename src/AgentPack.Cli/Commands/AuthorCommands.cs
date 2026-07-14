@@ -573,15 +573,15 @@ public static class Scaffolder
         {
             if (external.License is null)
             {
-                builder.AppendLine($"source: {external.Url}@{external.Ref}");
+                builder.AppendLine($"source: {JsonSerializer.Serialize($"{external.Url}@{external.Ref}")}");
             }
             else
             {
                 // The one-line shorthand cannot carry a license; use the mapping form.
                 builder.AppendLine("source:");
-                builder.AppendLine($"  url: {external.Url}");
-                builder.AppendLine($"  ref: {external.Ref}");
-                builder.AppendLine($"  license: {external.License}");
+                builder.AppendLine($"  url: {JsonSerializer.Serialize(external.Url)}");
+                builder.AppendLine($"  ref: {JsonSerializer.Serialize(external.Ref)}");
+                builder.AppendLine($"  license: {JsonSerializer.Serialize(external.License)}");
             }
         }
 

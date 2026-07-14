@@ -89,7 +89,7 @@ public class CliEndToEndTests
             "https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d");
         Assert.Equal(0, pinned.ExitCode);
         var manifest = File.ReadAllText(Path.Combine(WorkDir(temp), "assets", "skills", "pdf", "agentpack.yaml"));
-        Assert.Contains("source: https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d", manifest);
+        Assert.Contains("source: \"https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d\"", manifest);
     }
 
     [Fact]
@@ -398,9 +398,10 @@ public class CliEndToEndTests
         var dir = Path.Combine(WorkDir(temp), "assets", "skills", id);
         Directory.CreateDirectory(dir);
         var licenseLine = license is null ? "" : $"  license: {license}\n";
+        var yamlRepo = repo.Replace("'", "''", StringComparison.Ordinal);
         File.WriteAllText(Path.Combine(dir, "agentpack.yaml"),
             $"name: {id}\nversion: 1.0.0\ndescription: External test skill.\ngroups: [review]\n" +
-            $"source:\n  url: \"{repo}\"\n  ref: {revision}\n{licenseLine}");
+            $"source:\n  url: '{yamlRepo}'\n  ref: {revision}\n{licenseLine}");
         return (repo, revision);
     }
 

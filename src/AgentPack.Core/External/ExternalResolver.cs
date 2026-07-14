@@ -64,9 +64,11 @@ public sealed class ExternalResolver
                 "Check the URL path and the pinned ref.");
         }
 
-        if (Directory.Exists(finalPath)) Directory.Delete(finalPath, recursive: true);
-        if (File.Exists(finalPath)) File.Delete(finalPath);
-        ContentHash.CopyTree(sourcePath, finalPath);
+        DeleteExisting(finalPath);
+        // A repository-root source contains Git's private checkout metadata. It is
+        // not part of the reviewed asset and can contain read-only object files on
+        // Windows, so never copy it into the content-addressed install cache.
+        ContentHash.CopyTree(sourcePath, finalPath, [".git"]);
 
         var actual = ContentHash.Compute(finalPath);
         if (resolved.Checksum is not null && !actual.Equals(resolved.Checksum, StringComparison.OrdinalIgnoreCase))
@@ -143,8 +145,20 @@ public sealed class ExternalResolver
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
     private static void DeleteExisting(string path)
     {
-        if (File.Exists(path)) File.Delete(path);
-        else if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+        if (File.Exists(path))
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
+            return;
+        }
+
+        if (!Directory.Exists(path)) return;
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(file, FileAttributes.Normal);
+        }
+
+        Directory.Delete(path, recursive: true);
     }
 }
 

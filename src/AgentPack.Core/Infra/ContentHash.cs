@@ -33,7 +33,10 @@ public static class ContentHash
         return "sha256:" + Convert.ToHexString(sha.Hash!).ToLowerInvariant();
     }
 
-    public static void CopyTree(string source, string destination)
+    public static void CopyTree(
+        string source,
+        string destination,
+        IReadOnlyCollection<string>? excludedNames = null)
     {
         if (File.Exists(source))
         {
@@ -47,18 +50,10 @@ public static class ContentHash
             throw new DirectoryNotFoundException(source);
         }
 
-        Directory.CreateDirectory(destination);
-        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
-        {
-            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
-        }
-
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-        {
-            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            CopyFilePreservingMode(file, target);
-        }
+        var excluded = excludedNames is null
+            ? null
+            : new HashSet<string>(excludedNames, StringComparer.OrdinalIgnoreCase);
+        CopyDirectory(source, destination, excluded);
     }
 
     public static void MakeExecutable(string path)
@@ -86,6 +81,22 @@ public static class ContentHash
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(destination, File.GetUnixFileMode(source));
+        }
+    }
+
+    private static void CopyDirectory(string source, string destination, HashSet<string>? excluded)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.TopDirectoryOnly))
+        {
+            if (excluded?.Contains(Path.GetFileName(directory)) == true) continue;
+            CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)), excluded);
+        }
+
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.TopDirectoryOnly))
+        {
+            if (excluded?.Contains(Path.GetFileName(file)) == true) continue;
+            CopyFilePreservingMode(file, Path.Combine(destination, Path.GetFileName(file)));
         }
     }
 }

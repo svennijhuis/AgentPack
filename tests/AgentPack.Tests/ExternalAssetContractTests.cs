@@ -99,6 +99,30 @@ public class ExternalAssetContractTests
         Assert.Contains("SKILL.md", ex.Message);
     }
 
+    [Fact]
+    public void ExternalResolverDoesNotCopyGitMetadataFromRepositoryRoot()
+    {
+        using var temp = new TempDir();
+        var repo = Path.Combine(temp.Path, "upstream.git");
+        Directory.CreateDirectory(repo);
+        Git(repo, ["init"]);
+        Git(repo, ["config", "user.email", "agentpack@example.test"]);
+        Git(repo, ["config", "user.name", "AgentPack"]);
+        File.WriteAllText(Path.Combine(repo, "SKILL.md"), "# Skill\n");
+        Git(repo, ["add", "SKILL.md"]);
+        Git(repo, ["commit", "-m", "initial"]);
+        var sha = Git(repo, ["rev-parse", "HEAD"]).Trim();
+        var paths = TestData.Paths(temp, "consumer");
+        var asset = TestData.Asset(AssetKind.Skills, "skill",
+            source: new AssetSource.External(repo, sha, null, null, "MIT"));
+
+        var resolved = new ExternalResolver(paths).ResolveToCache(asset);
+
+        Assert.True(File.Exists(Path.Combine(resolved, "SKILL.md")));
+        Assert.False(File.Exists(Path.Combine(resolved, ".git")));
+        Assert.False(Directory.Exists(Path.Combine(resolved, ".git")));
+    }
+
     private static string Git(string workingDirectory, IReadOnlyList<string> arguments)
     {
         var result = ProcessRunner.Run("git", arguments, workingDirectory);

@@ -46,6 +46,9 @@ jobs:
       - name: Validate catalog
         run: dotnet run --project src/AgentPack.Cli --configuration Release -- catalog validate
 
+      - name: Check lockfile is up to date
+        run: dotnet run --project src/AgentPack.Cli --configuration Release -- catalog lock --check
+
       - name: Verify external assets
         run: dotnet run --project src/AgentPack.Cli --configuration Release -- catalog verify-external
 

@@ -30,6 +30,25 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-build --logger "console;verbosity=normal"
 
+  # This repo is itself a catalog: validate it and re-fetch every external asset
+  # at its pinned ref so upstream drift (a moved tag, changed content) is caught
+  # here instead of on a developer's machine.
+  catalog:
+    name: Validate catalog & verify external assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate catalog
+        run: dotnet run --project src/AgentPack.Cli --configuration Release -- catalog validate
+
+      - name: Verify external assets
+        run: dotnet run --project src/AgentPack.Cli --configuration Release -- catalog verify-external
+
   pack:
     name: Pack tool
     runs-on: ubuntu-latest

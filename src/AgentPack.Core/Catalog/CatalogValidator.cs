@@ -178,7 +178,24 @@ public sealed class CatalogValidator
                     }
 
                     var expected = loaded.EffectiveChecksum(asset);
-                    if (expected is not null && !expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
+                    if (expected is null)
+                    {
+                        // Without a checksum the fetched content is never verified. A full
+                        // commit SHA is immutable, so that is only a hygiene warning; a tag
+                        // can be moved upstream, so tag + no checksum means silent tampering.
+                        if (IsFullCommitSha(resolved.Ref))
+                        {
+                            report.Warning("asset.checksum.missing",
+                                $"External asset '{asset.Id}' has no checksum in the manifest or catalog.lock.yaml. Run 'agentpack catalog lock'.");
+                        }
+                        else
+                        {
+                            report.Error("asset.external.checksum.missing",
+                                $"External asset '{asset.Id}' pins a mutable tag and has no checksum, so its content cannot be verified. " +
+                                "Run 'agentpack catalog lock' or pin a full commit SHA.");
+                        }
+                    }
+                    else if (!expected.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
                     {
                         report.Error("asset.checksum.invalid", $"Asset '{asset.Id}' checksum must start with sha256:.");
                     }

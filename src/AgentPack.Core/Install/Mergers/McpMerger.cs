@@ -148,7 +148,18 @@ public static class McpMerger
 
         if (root["mcpServers"] is JsonObject existingServers)
         {
-            return Clone(existingServers).AsObject();
+            // The passthrough must obey the same rule as the typed/raw paths:
+            // env vars are declared by name only, never shipped with a value.
+            var servers = Clone(existingServers).AsObject();
+            foreach (var (_, serverNode) in servers)
+            {
+                if (serverNode is JsonObject server && server["env"] is JsonObject env)
+                {
+                    server["env"] = NormalizedEnv(env, asset.Id, provider, scope);
+                }
+            }
+
+            return servers;
         }
 
         var serverName = StringValue(root, "server") ?? StringValue(root, "name") ?? asset.Id;
@@ -480,9 +491,14 @@ public static class McpMerger
             return EnvObject(envVars.Select(x => x?.GetValue<string>() ?? ""), provider, scope);
         }
 
-        var env = new JsonObject();
-        if (raw["env"] is not JsonObject rawEnv) return env;
+        if (raw["env"] is not JsonObject rawEnv) return new JsonObject();
+        return NormalizedEnv(rawEnv, assetId, provider, scope);
+    }
 
+    /// <summary>Rejects env entries carrying literal values and rewrites the rest to the provider's placeholder syntax.</summary>
+    private static JsonObject NormalizedEnv(JsonObject rawEnv, string assetId, ProviderName provider, InstallScope scope)
+    {
+        var env = new JsonObject();
         foreach (var (key, value) in rawEnv)
         {
             var stringValue = value?.GetValue<string>() ?? "";

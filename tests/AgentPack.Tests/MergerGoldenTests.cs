@@ -330,6 +330,41 @@ public class MergerGoldenTests
         Assert.Contains("must be declared by name", ex.Message);
     }
 
+    [Fact]
+    public void McpSecretsInRawMcpServersPassthroughAreRejected()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Mcp, "leaky",
+            files: new Dictionary<string, string>
+            {
+                ["mcp.json"] = """{"mcpServers":{"leaky":{"command":"x","env":{"TOKEN":"actual-secret-value"}}}}"""
+            });
+        var sourcePath = Path.Combine(temp.Path, "assets", "mcp", "leaky", "content");
+        var target = new InstallTarget(ProviderName.Claude, AssetKind.Mcp, ".mcp.json", InstallMode.MergeMcp);
+
+        var ex = Assert.Throws<AgentPackException>(() =>
+            McpMerger.Apply(asset, sourcePath, target, Path.Combine(temp.Path, ".mcp.json"), InstallScope.Project, _ => { }));
+        Assert.Contains("must be declared by name", ex.Message);
+    }
+
+    [Fact]
+    public void McpRawMcpServersPassthroughRewritesDeclaredEnvVars()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Mcp, "multi",
+            files: new Dictionary<string, string>
+            {
+                ["mcp.json"] = """{"mcpServers":{"multi":{"command":"x","env":{"TOKEN":"${TOKEN}"}}}}"""
+            });
+        var sourcePath = Path.Combine(temp.Path, "assets", "mcp", "multi", "content");
+        var targetPath = Path.Combine(temp.Path, ".cursor", "mcp.json");
+        var target = new InstallTarget(ProviderName.Cursor, AssetKind.Mcp, Path.Combine(".cursor", "mcp.json"), InstallMode.MergeMcp);
+
+        McpMerger.Apply(asset, sourcePath, target, targetPath, InstallScope.Project, _ => { });
+
+        Assert.Contains("${env:TOKEN}", File.ReadAllText(targetPath));
+    }
+
     private static string MergeMcp(ProviderName provider, InstallScope scope, string relativeTarget)
     {
         using var temp = new TempDir();

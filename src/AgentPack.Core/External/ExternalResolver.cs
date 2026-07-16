@@ -39,10 +39,16 @@ public sealed class ExternalResolver
         var resolved = ExternalSourceParser.Resolve(source);
         var finalPath = CachedContentPath(resolved);
 
+        // Two agentpack processes resolving the same asset would race on the same
+        // delete-then-copy below; serialize per cache entry, then re-check the cache.
+        var cacheRoot = Path.Combine(_paths.ExternalCacheRoot, CacheKey(resolved));
+        using var cacheLock = ScopeLock.Acquire(cacheRoot);
+        cached = TryResolveFromCache(asset);
+        if (cached is not null) return cached;
+
         var repo = ProcessRunner.SafeGitArg(resolved.Repo, "repository URL");
         var reference = ProcessRunner.SafeGitArg(resolved.Ref, "git ref");
-        var repoCache = Path.Combine(_paths.ExternalCacheRoot, CacheKey(resolved), "repo");
-        Directory.CreateDirectory(Path.GetDirectoryName(repoCache)!);
+        var repoCache = Path.Combine(cacheRoot, "repo");
         if (!Directory.Exists(Path.Combine(repoCache, ".git")))
         {
             Ensure(ProcessRunner.Run("git", ["clone", "--", repo, repoCache], _paths.WorkingDirectory),

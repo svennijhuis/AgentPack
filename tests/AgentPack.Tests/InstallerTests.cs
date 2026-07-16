@@ -230,4 +230,49 @@ public class InstallerTests
         Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, "CLAUDE.md", "org-instructions.md")));
         Assert.Equal("# Org rules\n", File.ReadAllText(target));
     }
+
+    [Fact]
+    public void SharedInstructionsTargetSurvivesRemovingOneProvider()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        // Codex and Cursor both install project instructions to repo-root AGENTS.md.
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Instructions, "guides",
+            files: new Dictionary<string, string> { ["AGENTS.md"] = "# guide\n" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+
+        var plan = installer.Plan(loaded, [asset], [ProviderName.Codex, ProviderName.Cursor], InstallScope.Project);
+        Assert.Equal(2, plan.Items.Count);
+        var results = installer.Apply(plan.Items, loaded, InstallScope.Project, _ => DriftAction.Keep);
+        Assert.All(results, r => Assert.Equal(ApplyOutcome.Installed, r.Outcome));
+
+        var agentsMd = Path.Combine(paths.WorkingDirectory, "AGENTS.md");
+        Assert.True(File.Exists(agentsMd));
+
+        installer.Remove(null, ["guides"], [ProviderName.Codex], InstallScope.Project);
+        Assert.True(File.Exists(agentsMd));
+
+        installer.Remove(null, ["guides"], [ProviderName.Cursor], InstallScope.Project);
+        Assert.False(File.Exists(agentsMd));
+    }
+
+    [Fact]
+    public void TargetInstalledByAnotherProviderIsNotUnmanaged()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Instructions, "guides",
+            files: new Dictionary<string, string> { ["AGENTS.md"] = "# guide\n" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+
+        installer.Apply(installer.Plan(loaded, [asset], [ProviderName.Codex], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+
+        // The file exists but is exactly what the Codex entry installed, so adding
+        // Cursor later must not flag it as an unmanaged file to overwrite.
+        var plan = installer.Plan(loaded, [asset], [ProviderName.Cursor], InstallScope.Project);
+        Assert.Equal(InstallState.Available, Assert.Single(plan.Items).State);
+    }
 }

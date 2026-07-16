@@ -179,6 +179,18 @@ public class CatalogLoadingTests
         File.WriteAllText(Path.Combine(root, "catalog.yaml"), "schemaVersion: \"1\"\ncatalogVersion: 0.1.0\n");
     }
 
+    [Fact]
+    public void MalformedCatalogLockYamlFailsWithActionableError()
+    {
+        using var temp = new TempDir();
+        var path = Path.Combine(temp.Path, "catalog.lock.yaml");
+        File.WriteAllText(path, "entries: [ {\n");
+
+        var ex = Assert.Throws<AgentPackException>(() => CatalogLockFile.Load(path));
+        Assert.Contains("catalog.lock.yaml", ex.Message);
+        Assert.Contains("agentpack catalog lock", ex.Hint);
+    }
+
     private static void WriteAsset(string root, string kind, string id, string manifestYaml)
     {
         var dir = Path.Combine(root, "assets", kind, id);

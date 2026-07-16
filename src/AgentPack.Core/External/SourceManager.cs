@@ -95,6 +95,11 @@ public sealed class SourceManager
         var branch = ProcessRunner.SafeGitArg(source.Branch, "branch name");
         var url = ProcessRunner.SafeGitArg(source.Url, "repository URL");
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+
+        // Concurrent agentpack processes syncing the same source would run git
+        // against the same clone; serialize on the sources directory. The lock
+        // cannot live inside the clone dir — git clone needs it empty.
+        using var syncLock = ScopeLock.Acquire(Path.GetDirectoryName(target)!);
         if (!Directory.Exists(Path.Combine(target, ".git")))
         {
             Ensure(ProcessRunner.Run("git", ["clone", "--branch", branch, "--", url, target], _paths.WorkingDirectory),

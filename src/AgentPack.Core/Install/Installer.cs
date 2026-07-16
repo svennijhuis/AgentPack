@@ -435,7 +435,15 @@ public sealed class Installer
         var root = scope == InstallScope.User ? _paths.Home : Path.Combine(_paths.WorkingDirectory, ".agentpack");
         var backupsRoot = Path.Combine(root, "backups");
         var backupRoot = Path.Combine(backupsRoot, DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff"));
-        var target = Path.Combine(backupRoot, Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)));
+        var leaf = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
+        var target = Path.Combine(backupRoot, leaf);
+        // Two same-named files backed up within one millisecond (e.g. AGENTS.md for
+        // two providers in one apply) must not overwrite each other's backup.
+        for (var i = 2; File.Exists(target) || Directory.Exists(target); i++)
+        {
+            target = Path.Combine(backupRoot, $"{leaf}-{i}");
+        }
+
         ContentHash.CopyTree(path, target);
         PruneBackups(backupsRoot);
     }

@@ -593,7 +593,22 @@ public static class AtomicWrite
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         var tempPath = fullPath + ".tmp-" + Guid.NewGuid().ToString("N");
-        File.WriteAllText(tempPath, contents, Utf8NoBom);
-        File.Move(tempPath, fullPath, overwrite: true);
+        try
+        {
+            File.WriteAllText(tempPath, contents, Utf8NoBom);
+            File.Move(tempPath, fullPath, overwrite: true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(tempPath);
+            }
+            catch (IOException)
+            {
+            }
+
+            throw;
+        }
     }
 }

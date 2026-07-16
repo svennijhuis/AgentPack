@@ -61,8 +61,10 @@ public sealed class SourceManager
     /// </summary>
     public CatalogIssue? RefreshIfStale(string catalogPath)
     {
+        // Windows paths compare case-insensitively; Ordinal would silently skip the refresh.
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var source = LoadConfig().Sources.FirstOrDefault(x =>
-            Path.GetFullPath(catalogPath).StartsWith(Path.GetFullPath(SourceCachePath(x)) + Path.DirectorySeparatorChar, StringComparison.Ordinal));
+            Path.GetFullPath(catalogPath).StartsWith(Path.GetFullPath(SourceCachePath(x)) + Path.DirectorySeparatorChar, comparison));
         if (source is null) return null;
 
         var marker = SyncMarkerPath(source);
@@ -179,5 +181,10 @@ public sealed class SourceManager
     private static string FirstLine(string text) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
 
-    private static string Sanitize(string value) => string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
+    private static string Sanitize(string value)
+    {
+        // Distinct names like "a/b" and "a-b" must not collapse to the same cache dir.
+        var safe = string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
+        return safe == value ? safe : safe + "-" + ContentHash.ShortKey(value);
+    }
 }

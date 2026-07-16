@@ -65,7 +65,7 @@ public static class HookMerger
                     var powershell = FindPowershellTwin(supportPath, command);
                     var document = CopilotHookDocument(asset, command, powershell);
                     fragment = document.ToJsonString();
-                    WriteCopilotHookFile(targetPath, document, backupIfExists);
+                    WriteCopilotHookFile(targetPath, document, previousFragment, overwriteModified, backupIfExists);
                     break;
                 }
 
@@ -321,12 +321,26 @@ public static class HookMerger
         return true;
     }
 
-    private static void WriteCopilotHookFile(string path, JsonObject document, Action<string> backupIfExists)
+    private static void WriteCopilotHookFile(string path, JsonObject document, string? previousFragment, bool overwriteModified,
+        Action<string> backupIfExists)
     {
         if (File.Exists(path))
         {
             var existing = UserConfigJson.LoadObject(path);
             if (JsonNode.DeepEquals(existing, document)) return;
+
+            // Same drift rule as the shared-config providers: content we did not
+            // write is only replaced when the drift decision says so.
+            var isOurs = previousFragment is not null &&
+                JsonNode.DeepEquals(existing, UserConfigJson.ParseFragment(previousFragment));
+            if (!isOurs && !overwriteModified)
+            {
+                throw new AgentPackException(
+                    $"{path} already exists with a different configuration.",
+                    "Remove the file (or rerun with --force to overwrite), then retry.",
+                    ExitCodes.DriftOrConflict);
+            }
+
             backupIfExists(path);
         }
 

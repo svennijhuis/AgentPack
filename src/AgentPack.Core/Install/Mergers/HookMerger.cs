@@ -62,7 +62,7 @@ public static class HookMerger
 
             case ProviderName.Copilot:
                 {
-                    var powershell = FindPowershellTwin(supportPath, command);
+                    var powershell = FindPowershellTwin(supportPath, commandPath, command);
                     var document = CopilotHookDocument(asset, command, powershell);
                     fragment = document.ToJsonString();
                     WriteCopilotHookFile(targetPath, document, previousFragment, overwriteModified, backupIfExists);
@@ -94,7 +94,7 @@ public static class HookMerger
             ProviderName.Claude or ProviderName.Codex =>
                 ClaudeStyleFragment(ClaudeStyleEvent(target.Provider, asset), Matcher(asset), ClaudeStyleHandler(asset, command)),
             ProviderName.Cursor => CursorFragment(CursorEvent(asset), CursorEntry(asset, command)),
-            ProviderName.Copilot => CopilotHookDocument(asset, command, FindPowershellTwin(supportPath, command)).ToJsonString(),
+            ProviderName.Copilot => CopilotHookDocument(asset, command, FindPowershellTwin(supportPath, commandPath, command)).ToJsonString(),
             _ => throw new AgentPackException($"{target.Provider.Display()} hook installation is not implemented.")
         };
     }
@@ -449,14 +449,23 @@ public static class HookMerger
         };
     }
 
-    private static string? FindPowershellTwin(string supportPath, string bashCommand)
+    private static string? FindPowershellTwin(string supportPath, string commandPath, string bashCommand)
     {
         if (!Directory.Exists(supportPath)) return null;
-        var twinName = Path.GetFileNameWithoutExtension(bashCommand) + ".ps1";
-        return Directory.EnumerateFiles(supportPath, "*.ps1", SearchOption.AllDirectories)
-            .Any(f => Path.GetFileName(f).Equals(twinName, StringComparison.OrdinalIgnoreCase))
-            ? Path.ChangeExtension(bashCommand, ".ps1")
-            : null;
+        var twinName = Path.GetFileNameWithoutExtension(commandPath) + ".ps1";
+        var twin = Directory.EnumerateFiles(supportPath, "*.ps1", SearchOption.AllDirectories)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .FirstOrDefault(f => Path.GetFileName(f).Equals(twinName, StringComparison.OrdinalIgnoreCase));
+        if (twin is null) return null;
+
+        // The twin may live in a different subfolder than the bash script (e.g.
+        // content/win/hook.ps1); emit its real location, not a same-directory guess.
+        var bashTail = Path.GetRelativePath(supportPath, commandPath).Replace(Path.DirectorySeparatorChar, '/');
+        var twinTail = Path.GetRelativePath(supportPath, twin).Replace(Path.DirectorySeparatorChar, '/');
+        var normalized = bashCommand.Replace('\\', '/');
+        return normalized.EndsWith(bashTail, StringComparison.Ordinal)
+            ? normalized[..^bashTail.Length] + twinTail
+            : Path.ChangeExtension(bashCommand, ".ps1");
     }
 
     private static JsonObject ClaudeStyleHandler(Asset asset, string command) => new()

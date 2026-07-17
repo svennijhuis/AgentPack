@@ -271,6 +271,20 @@ public static class Scaffolder
                     "---\ndescription: Describe when this rule applies.\n---\n\n# " + name + "\n\nAdd the rule here.\n");
                 break;
 
+            case AssetKind.Agents:
+                File.WriteAllText(Path.Combine(contentRoot, "AGENT.md"), $"""
+                ---
+                name: {id}
+                description: Describe when this agent should be delegated to.
+                ---
+
+                # {name}
+
+                You are a specialized agent. Describe the task it owns, the steps it
+                follows, and the output it returns.
+                """);
+                break;
+
             case AssetKind.Instructions:
             case AssetKind.Prompts:
                 File.WriteAllText(Path.Combine(contentRoot, id + ".md"), "# " + name + "\n\nAdd the content here.\n");

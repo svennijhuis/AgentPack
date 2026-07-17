@@ -44,6 +44,11 @@ public sealed class CopilotAdapter : IProviderAdapter
                 ? Supported(Name, asset, Path.Combine(".copilot", "hooks", asset.Id + ".json"), InstallMode.MergeHook)
                 : Supported(Name, asset, Path.Combine(".github", "hooks", asset.Id + ".json"), InstallMode.MergeHook),
 
+            // The .agent.md suffix is required in both scopes; plain .md files are ignored.
+            AssetKind.Agents => userScope
+                ? Supported(Name, asset, Path.Combine(".copilot", "agents", asset.Id + ".agent.md"), InstallMode.CopyTree, isFileTarget: true)
+                : Supported(Name, asset, Path.Combine(".github", "agents", asset.Id + ".agent.md"), InstallMode.CopyTree, isFileTarget: true),
+
             AssetKind.Rules => Unsupported("Copilot has no rules files — use an instructions asset (.github/instructions) instead."),
             AssetKind.Tools => Unsupported("Copilot has no generic tools directory."),
             AssetKind.Templates => Unsupported("Copilot has no templates directory."),

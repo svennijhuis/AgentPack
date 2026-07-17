@@ -40,8 +40,8 @@ public class InstallerTests
 
         var plan = new Installer(paths).Plan(loaded, [asset], ProviderNames.All, InstallScope.Project);
 
-        Assert.Single(plan.Items); // cursor only
-        Assert.Equal(3, plan.Skipped.Count); // claude + codex + copilot, with reasons
+        Assert.Equal(2, plan.Items.Count); // cursor (.mdc) + claude (.claude/rules translation)
+        Assert.Equal(2, plan.Skipped.Count); // codex + copilot, with reasons
         Assert.All(plan.Skipped, skip => Assert.False(string.IsNullOrWhiteSpace(skip.Reason)));
     }
 

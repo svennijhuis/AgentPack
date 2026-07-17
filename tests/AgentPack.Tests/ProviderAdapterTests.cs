@@ -20,7 +20,10 @@ public class ProviderAdapterTests
     [InlineData(ProviderName.Claude, AssetKind.Instructions, true, ".claude/CLAUDE.md", InstallMode.CopyTree, true)]
     [InlineData(ProviderName.Claude, AssetKind.Prompts, false, ".claude/commands/demo.md", InstallMode.CopyTree, true)]
     [InlineData(ProviderName.Claude, AssetKind.Prompts, true, ".claude/commands/demo.md", InstallMode.CopyTree, true)]
-    [InlineData(ProviderName.Claude, AssetKind.Rules, false, null, default(InstallMode), false)]
+    [InlineData(ProviderName.Claude, AssetKind.Rules, false, ".claude/rules/demo.md", InstallMode.ConvertFile, true)]
+    [InlineData(ProviderName.Claude, AssetKind.Rules, true, ".claude/rules/demo.md", InstallMode.ConvertFile, true)]
+    [InlineData(ProviderName.Claude, AssetKind.Agents, false, ".claude/agents/demo.md", InstallMode.CopyTree, true)]
+    [InlineData(ProviderName.Claude, AssetKind.Agents, true, ".claude/agents/demo.md", InstallMode.CopyTree, true)]
     [InlineData(ProviderName.Codex, AssetKind.Skills, false, ".agents/skills/demo", InstallMode.CopyTree, false)]
     [InlineData(ProviderName.Codex, AssetKind.Skills, true, ".agents/skills/demo", InstallMode.CopyTree, false)]
     [InlineData(ProviderName.Codex, AssetKind.Mcp, false, ".codex/config.toml", InstallMode.MergeMcp, false)]
@@ -32,6 +35,8 @@ public class ProviderAdapterTests
     [InlineData(ProviderName.Codex, AssetKind.Hooks, false, ".codex/hooks.json", InstallMode.MergeHook, false)]
     [InlineData(ProviderName.Codex, AssetKind.Hooks, true, ".codex/hooks.json", InstallMode.MergeHook, false)]
     [InlineData(ProviderName.Codex, AssetKind.Rules, false, null, default(InstallMode), false)]
+    [InlineData(ProviderName.Codex, AssetKind.Agents, false, ".codex/agents/demo.toml", InstallMode.ConvertFile, true)]
+    [InlineData(ProviderName.Codex, AssetKind.Agents, true, ".codex/agents/demo.toml", InstallMode.ConvertFile, true)]
     [InlineData(ProviderName.Copilot, AssetKind.Skills, false, ".github/skills/demo", InstallMode.CopyTree, false)]
     [InlineData(ProviderName.Copilot, AssetKind.Skills, true, ".copilot/skills/demo", InstallMode.CopyTree, false)]
     [InlineData(ProviderName.Copilot, AssetKind.Mcp, false, ".vscode/mcp.json", InstallMode.MergeMcp, false)]
@@ -42,6 +47,8 @@ public class ProviderAdapterTests
     [InlineData(ProviderName.Copilot, AssetKind.Prompts, true, null, default(InstallMode), false)]
     [InlineData(ProviderName.Copilot, AssetKind.Hooks, false, ".github/hooks/demo.json", InstallMode.MergeHook, false)]
     [InlineData(ProviderName.Copilot, AssetKind.Hooks, true, ".copilot/hooks/demo.json", InstallMode.MergeHook, false)]
+    [InlineData(ProviderName.Copilot, AssetKind.Agents, false, ".github/agents/demo.agent.md", InstallMode.CopyTree, true)]
+    [InlineData(ProviderName.Copilot, AssetKind.Agents, true, ".copilot/agents/demo.agent.md", InstallMode.CopyTree, true)]
     [InlineData(ProviderName.Cursor, AssetKind.Skills, false, ".cursor/skills/demo", InstallMode.CopyTree, false)]
     [InlineData(ProviderName.Cursor, AssetKind.Skills, true, ".cursor/skills/demo", InstallMode.CopyTree, false)]
     [InlineData(ProviderName.Cursor, AssetKind.Rules, false, ".cursor/rules/demo.mdc", InstallMode.CopyTree, true)]
@@ -54,6 +61,8 @@ public class ProviderAdapterTests
     [InlineData(ProviderName.Cursor, AssetKind.Instructions, true, null, default(InstallMode), false)]
     [InlineData(ProviderName.Cursor, AssetKind.Prompts, false, ".cursor/commands/demo.md", InstallMode.CopyTree, true)]
     [InlineData(ProviderName.Cursor, AssetKind.Prompts, true, ".cursor/commands/demo.md", InstallMode.CopyTree, true)]
+    [InlineData(ProviderName.Cursor, AssetKind.Agents, false, ".cursor/agents/demo.md", InstallMode.CopyTree, true)]
+    [InlineData(ProviderName.Cursor, AssetKind.Agents, true, ".cursor/agents/demo.md", InstallMode.CopyTree, true)]
     public void ProviderKindMatrix(ProviderName provider, AssetKind kind, bool userScope, string? expectedPath, InstallMode mode, bool fileTarget)
     {
         var asset = TestData.Asset(kind, "demo");

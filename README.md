@@ -2,7 +2,7 @@
 
 **One catalog of approved AI assets. Every developer. Every AI tool. One command.**
 
-`agentpack` is a .NET global tool that installs your organization's skills, hooks, MCP servers, instructions, rules, and prompts into **Claude Code, Codex, GitHub Copilot, and Cursor** — each in that product's own native format, so everything works out of the box.
+`agentpack` is a .NET global tool that installs your organization's skills, hooks, MCP servers, instructions, rules, prompts, and agents into **Claude Code, Codex, GitHub Copilot, and Cursor** — each in that product's own native format, so everything works out of the box.
 
 ```bash
 agentpack add
@@ -32,7 +32,8 @@ Everything works on all four providers unless the product itself has no such con
 | **mcp** | MCP server configs | ✓ | ✓ | ✓ | ✓ |
 | **instructions** | CLAUDE.md / AGENTS.md / Copilot instructions | ✓ | ✓ | ✓ | ✓ |
 | **prompts** | reusable prompts / slash commands | ✓ | ✓ | ✓ | ✓ |
-| **rules** | Cursor rules (.mdc) | — | — | — | ✓ |
+| **agents** | custom agents / subagents | ✓ | ✓ | ✓ | ✓ |
+| **rules** | scoped rules (.mdc / .claude/rules) | ✓ | — | — | ✓ |
 | **profiles** | everything a team needs, in one command | ✓ | ✓ | ✓ | ✓ |
 
 "—" = the product has no such feature; agentpack says so explicitly instead of writing files nothing reads. Every path is verified against official docs and pinned by tests: [provider-mapping.md](docs/provider-mapping.md).
@@ -208,7 +209,7 @@ Diagrams for the whole system — install flow, PR flow, external pinning, state
 
 ```bash
 dotnet build     # warnings are errors
-dotnet test      # 112 tests: provider golden files, merge formats, CLI end-to-end
+dotnet test      # 237 tests: provider golden files, merge formats, CLI end-to-end
 ```
 
 Docs: [how it works](docs/how-it-works.md) · [provider mapping](docs/provider-mapping.md) · [catalog authoring](docs/catalog-authoring.md) · [external assets](docs/external-assets.md) · [groups & profiles](docs/groups-bundles-profiles.md) · [governance](docs/governance.md)

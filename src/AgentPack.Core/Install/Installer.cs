@@ -127,7 +127,7 @@ public sealed class Installer
                 InstallMode = item.Target.Mode,
                 SourceChecksum = SourceChecksum(loaded, item.Asset, sourcePath),
                 InstalledChecksum = installed.Checksum,
-                Fragment = item.Target.Mode == InstallMode.CopyTree ? null : installed.Fragment,
+                Fragment = item.Target.Mode.OwnsWholeTarget() ? null : installed.Fragment,
                 Pinned = item.Existing?.Pinned ?? false
             });
 
@@ -281,8 +281,8 @@ public sealed class Installer
         if (existing is null)
         {
             // Merge targets are designed to coexist with user content, so an existing
-            // shared config file is not "unmanaged" — only copy targets are.
-            if (target.Mode != InstallMode.CopyTree || (!File.Exists(targetPath) && !Directory.Exists(targetPath)))
+            // shared config file is not "unmanaged" — only wholly-owned targets are.
+            if (!target.Mode.OwnsWholeTarget() || (!File.Exists(targetPath) && !Directory.Exists(targetPath)))
             {
                 return InstallState.Available;
             }
@@ -319,7 +319,7 @@ public sealed class Installer
     /// </summary>
     public static FragmentState InstalledFragmentState(LockEntry existing, string installedPath, InstallScope scope)
     {
-        if (existing.InstallMode == InstallMode.CopyTree)
+        if (existing.InstallMode.OwnsWholeTarget())
         {
             return ContentHash.Compute(installedPath).Equals(existing.InstalledChecksum, StringComparison.OrdinalIgnoreCase)
                 ? FragmentState.Present
@@ -369,6 +369,9 @@ public sealed class Installer
                 return HookMerger.Apply(item.Asset, sourcePath, item.Target, item.TargetPath, root, scope, path => Backup(path, scope),
                     item.Existing?.Fragment, overwriteModified);
 
+            case InstallMode.ConvertFile:
+                return FileConverter.Apply(item.Asset, sourcePath, item.Target, item.TargetPath, path => Backup(path, scope));
+
             case InstallMode.CopyTree:
             default:
                 if (File.Exists(item.TargetPath) || Directory.Exists(item.TargetPath))
@@ -401,7 +404,7 @@ public sealed class Installer
     private static void BackfillFragment(InstallPlanItem item, AgentPackLock lockFile, string root, InstallScope scope)
     {
         var entry = lockFile.Find(item.Asset.Id, item.Provider, item.Asset.Kind);
-        if (entry is null || entry.InstallMode == InstallMode.CopyTree || entry.Fragment is not null) return;
+        if (entry is null || entry.InstallMode.OwnsWholeTarget() || entry.Fragment is not null) return;
 
         var installedPath = ResolveLockPath(entry.Path, root);
         if (!File.Exists(installedPath)) return;

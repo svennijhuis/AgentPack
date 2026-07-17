@@ -31,6 +31,9 @@ public sealed class CursorAdapter : IProviderAdapter
 
             AssetKind.Prompts => Supported(Name, asset, Path.Combine(".cursor", "commands", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
 
+            // Cursor discovers agents only at the folder root — never nest them.
+            AssetKind.Agents => Supported(Name, asset, Path.Combine(".cursor", "agents", asset.Id + ".md"), InstallMode.CopyTree, isFileTarget: true),
+
             AssetKind.Tools => Unsupported("Cursor has no generic tools directory."),
             AssetKind.Templates => Unsupported("Cursor has no templates directory."),
             _ => Unsupported($"Cursor does not support {asset.Kind.Display()}.")

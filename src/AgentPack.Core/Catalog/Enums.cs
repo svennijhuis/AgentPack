@@ -9,7 +9,8 @@ public enum AssetKind
     Instructions,
     Rules,
     Prompts,
-    Templates
+    Templates,
+    Agents
 }
 
 public enum AssetStatus

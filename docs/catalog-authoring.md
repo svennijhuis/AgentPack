@@ -52,6 +52,25 @@ mcp:
   envVars: [GITHUB_TOKEN]         # names only, never values
 ```
 
+### Agents (`assets/agents/<id>/content/AGENT.md`)
+
+An agent asset is one markdown file with YAML frontmatter — the shared subset all
+providers read:
+
+```yaml
+---
+name: code-reviewer               # the agent's identity; defaults to the asset id
+description: When to delegate to this agent.
+# model: claude-haiku-4-5         # optional; provider-specific model ids
+---
+(system prompt / instructions as the markdown body)
+```
+
+Claude Code, Cursor, and Copilot receive the file as-is (Copilot under the
+required `.agent.md` name); Codex receives a generated `.codex/agents/<id>.toml`
+with `name`, `description`, `developer_instructions` (the body), and `model`.
+Unknown frontmatter fields are ignored by the products that don't use them.
+
 ## Add an external asset
 
 ```bash

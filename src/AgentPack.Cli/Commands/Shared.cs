@@ -267,6 +267,16 @@ public static class CommandHelpers
                         "Copilot CLI picks it up immediately; the Copilot cloud coding agent reads hooks from the default branch only.");
         }
 
+        var copilotRepoAgents = applied
+            .Where(x => x.Provider == ProviderName.Copilot && x.Asset.Kind == AssetKind.Agents && scope == InstallScope.Project)
+            .Select(x => x.Asset.Id)
+            .ToList();
+        if (copilotRepoAgents.Count > 0)
+        {
+            Output.Info($"Next step (copilot): commit .github/agents/ ({string.Join(", ", copilotRepoAgents)}). " +
+                        "Copilot CLI picks it up immediately; the Copilot cloud coding agent reads custom agents from the default branch only.");
+        }
+
         var envVars = applied
             .Where(x => x.Asset.Mcp is not null)
             .SelectMany(x => x.Asset.Mcp!.EnvVars.Concat(x.Asset.Mcp!.HeaderEnvVars.Values))

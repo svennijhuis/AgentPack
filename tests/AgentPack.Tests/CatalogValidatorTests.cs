@@ -31,15 +31,39 @@ public class CatalogValidatorTests
     }
 
     [Fact]
-    public void TagRefWarnsButPasses()
+    public void TagRefWithChecksumWarnsButPasses()
     {
         using var temp = new TempDir();
         var asset = TestData.Asset(AssetKind.Skills, "tagged",
-            source: new AssetSource.External("https://github.com/o/r.git", "v1.0.0", "skills/x", null, "MIT"));
+            source: new AssetSource.External("https://github.com/o/r.git", "v1.0.0", "skills/x", "sha256:" + new string('0', 64), "MIT"));
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset), verifyChecksums: false);
 
         Assert.True(report.IsValid);
         Assert.Contains(report.Issues, x => x.Code == "asset.external.ref.tag");
+    }
+
+    [Fact]
+    public void TagRefWithoutChecksumIsAnError()
+    {
+        using var temp = new TempDir();
+        // A tag can be moved upstream; with no checksum the content is unverifiable.
+        var asset = TestData.Asset(AssetKind.Skills, "tagged",
+            source: new AssetSource.External("https://github.com/o/r.git", "v1.0.0", "skills/x", null, "MIT"));
+        var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset), verifyChecksums: false);
+
+        Assert.Contains(report.Issues, x => x.Code == "asset.external.checksum.missing" && x.Severity == IssueSeverity.Error);
+    }
+
+    [Fact]
+    public void ShaRefWithoutChecksumWarnsToRunCatalogLock()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.Asset(AssetKind.Skills, "pinned",
+            source: new AssetSource.External("https://github.com/o/r.git", Sha, "skills/x", null, "MIT"));
+        var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset), verifyChecksums: false);
+
+        Assert.True(report.IsValid);
+        Assert.Contains(report.Issues, x => x.Code == "asset.checksum.missing" && x.Severity == IssueSeverity.Warning);
     }
 
     [Fact]

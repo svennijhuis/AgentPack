@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.0.1 — Unreleased
+
+Fixes from a follow-up production-readiness review.
+
+### Fixed
+
+- **CLI printed nothing in some non-TTY environments.** Hosts that report a
+  negative console width (certain containers, `docker exec`, `TERM=linux`
+  shells) made every line render as an ellipsis while the exit code stayed 0.
+  Non-positive widths now fall back to 80 columns.
+- **External assets could install with no integrity check.** A missing checksum
+  now warns for SHA-pinned assets and fails validation for tag-pinned ones —
+  a moved tag with no checksum was previously undetectable. The repo's own
+  `catalog.lock.yaml` gained the missing external checksum.
+- **Raw `mcpServers` passthrough bypassed the no-secrets rule.** A
+  `content/mcp.json` shipping a whole `mcpServers` object was installed
+  verbatim; literal env values are now rejected and declared vars rewritten to
+  each provider's placeholder syntax, same as every other path.
+- **Codex + Cursor collided on repo-root `AGENTS.md`.** Removing one provider's
+  instructions no longer deletes the file while the other provider's install
+  still references it, and adding the second provider no longer flags the
+  first's file as unmanaged.
+- **Concurrent runs could corrupt the cache.** The external-asset cache and
+  source clones are now serialized with the same lock used for scopes.
+- **`catalog.lock.yaml` robustness.** Malformed YAML fails with an actionable
+  error instead of an internal one; saves are atomic.
+- Copilot per-hook files honor the drift decision instead of overwriting
+  content agentpack did not write; same-named files backed up in the same
+  millisecond no longer overwrite each other's backup; source cache paths
+  compare case-insensitively on Windows; sanitized source names cannot collide.
+- **Hooks on non-tool triggers fired never.** `stop`, `sessionStart`,
+  `userPromptSubmit`, and `notification` hooks were registered on Claude and
+  Codex inside a defaulted `"matcher": "Bash"` group, which those events never
+  match. The tool-matcher default now applies only to `preToolUse`/`postToolUse`;
+  other triggers get no matcher unless the asset sets one.
+- **Copilot user-scope remote MCP servers** with header env vars now fail with
+  a hint instead of writing `${VAR}` placeholders Copilot CLI never expands
+  (the literal string was sent as the header value).
+- **TOML escaping**: control characters in MCP commands/args no longer produce
+  invalid `.codex/config.toml`.
+- A PowerShell hook twin in a subfolder of `content/` is registered at its real
+  installed path instead of a same-directory guess.
+
+### Tests
+
+- The provider × kind × scope matrix now pins user-scope behavior (including
+  the Copilot/Cursor "managed in the editor" cases), every workspace-detection
+  marker, all hook trigger translations per provider, Codex TOML edge cases
+  (quoted server ids, escaping, args/env arrays), remote-server header syntax
+  per provider, and real on-disk landings for user scope, Cursor rules,
+  prompts, and Copilot's `.instructions.md`/`.prompt.md` naming.
+
+### Changed
+
+- Releases now gate on the same three-OS test matrix as CI, attach a
+  `SHA256SUMS` file, and fail loudly when `NUGET_API_KEY` is missing (set the
+  `SKIP_NUGET_PUBLISH` repository variable for a binaries-only release).
+- CI validates the catalog and re-verifies external assets at their pinned
+  refs on every run.
+
 ## 1.0.0 — 2026-07-12
 
 First stable release. Everything from the production-readiness review is fixed,

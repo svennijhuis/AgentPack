@@ -61,8 +61,10 @@ public sealed class SourceManager
     /// </summary>
     public CatalogIssue? RefreshIfStale(string catalogPath)
     {
+        // Windows paths compare case-insensitively; Ordinal would silently skip the refresh.
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var source = LoadConfig().Sources.FirstOrDefault(x =>
-            Path.GetFullPath(catalogPath).StartsWith(Path.GetFullPath(SourceCachePath(x)) + Path.DirectorySeparatorChar, StringComparison.Ordinal));
+            Path.GetFullPath(catalogPath).StartsWith(Path.GetFullPath(SourceCachePath(x)) + Path.DirectorySeparatorChar, comparison));
         if (source is null) return null;
 
         var marker = SyncMarkerPath(source);
@@ -95,6 +97,11 @@ public sealed class SourceManager
         var branch = ProcessRunner.SafeGitArg(source.Branch, "branch name");
         var url = ProcessRunner.SafeGitArg(source.Url, "repository URL");
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+
+        // Concurrent agentpack processes syncing the same source would run git
+        // against the same clone; serialize on the sources directory. The lock
+        // cannot live inside the clone dir — git clone needs it empty.
+        using var syncLock = ScopeLock.Acquire(Path.GetDirectoryName(target)!);
         if (!Directory.Exists(Path.Combine(target, ".git")))
         {
             Ensure(ProcessRunner.Run("git", ["clone", "--branch", branch, "--", url, target], _paths.WorkingDirectory),
@@ -174,5 +181,10 @@ public sealed class SourceManager
     private static string FirstLine(string text) =>
         text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
 
-    private static string Sanitize(string value) => string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
+    private static string Sanitize(string value)
+    {
+        // Distinct names like "a/b" and "a-b" must not collapse to the same cache dir.
+        var safe = string.Concat(value.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-'));
+        return safe == value ? safe : safe + "-" + ContentHash.ShortKey(value);
+    }
 }

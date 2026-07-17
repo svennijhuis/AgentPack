@@ -62,10 +62,10 @@ public static class HookMerger
 
             case ProviderName.Copilot:
                 {
-                    var powershell = FindPowershellTwin(supportPath, command);
+                    var powershell = FindPowershellTwin(supportPath, commandPath, command);
                     var document = CopilotHookDocument(asset, command, powershell);
                     fragment = document.ToJsonString();
-                    WriteCopilotHookFile(targetPath, document, backupIfExists);
+                    WriteCopilotHookFile(targetPath, document, previousFragment, overwriteModified, backupIfExists);
                     break;
                 }
 
@@ -94,7 +94,7 @@ public static class HookMerger
             ProviderName.Claude or ProviderName.Codex =>
                 ClaudeStyleFragment(ClaudeStyleEvent(target.Provider, asset), Matcher(asset), ClaudeStyleHandler(asset, command)),
             ProviderName.Cursor => CursorFragment(CursorEvent(asset), CursorEntry(asset, command)),
-            ProviderName.Copilot => CopilotHookDocument(asset, command, FindPowershellTwin(supportPath, command)).ToJsonString(),
+            ProviderName.Copilot => CopilotHookDocument(asset, command, FindPowershellTwin(supportPath, commandPath, command)).ToJsonString(),
             _ => throw new AgentPackException($"{target.Provider.Display()} hook installation is not implemented.")
         };
     }
@@ -177,11 +177,7 @@ public static class HookMerger
                 {
                     [ClaudeStyleEvent(target.Provider, asset)] = new JsonArray
                     {
-                        new JsonObject
-                        {
-                            ["matcher"] = Matcher(asset),
-                            ["hooks"] = new JsonArray { ClaudeStyleHandler(asset, command) }
-                        }
+                        MatcherGroup(Matcher(asset), ClaudeStyleHandler(asset, command))
                     }
                 }
             }
@@ -222,23 +218,20 @@ public static class HookMerger
         AtomicWrite.Text(path, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
-    private static bool MergeClaudeStyleHook(JsonObject hooks, string path, string matcher, JsonObject handler, string eventName,
+    private static bool MergeClaudeStyleHook(JsonObject hooks, string path, string? matcher, JsonObject handler, string eventName,
         string? previousFragment, bool overwriteModified)
     {
         var changed = ReplaceableClaudeStyleHandler(hooks, path, eventName, handler, previousFragment, overwriteModified);
 
         if (hooks[eventName] is not JsonArray eventArray)
         {
-            hooks[eventName] = new JsonArray
-            {
-                new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { CloneNode(handler) } }
-            };
+            hooks[eventName] = new JsonArray { MatcherGroup(matcher, handler) };
             return true;
         }
 
         foreach (var node in eventArray.OfType<JsonObject>())
         {
-            if (!matcher.Equals(node["matcher"]?.GetValue<string>(), StringComparison.OrdinalIgnoreCase)) continue;
+            if (!MatcherEquals(node["matcher"]?.GetValue<string>(), matcher)) continue;
             if (node["hooks"] is not JsonArray handlers)
             {
                 node["hooks"] = new JsonArray { CloneNode(handler) };
@@ -250,8 +243,16 @@ public static class HookMerger
             return true;
         }
 
-        eventArray.Add(new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { CloneNode(handler) } });
+        eventArray.Add(MatcherGroup(matcher, handler));
         return true;
+    }
+
+    private static JsonObject MatcherGroup(string? matcher, JsonObject handler)
+    {
+        var group = new JsonObject();
+        if (matcher is not null) group["matcher"] = matcher;
+        group["hooks"] = new JsonArray { CloneNode(handler) };
+        return group;
     }
 
     /// <summary>
@@ -321,12 +322,26 @@ public static class HookMerger
         return true;
     }
 
-    private static void WriteCopilotHookFile(string path, JsonObject document, Action<string> backupIfExists)
+    private static void WriteCopilotHookFile(string path, JsonObject document, string? previousFragment, bool overwriteModified,
+        Action<string> backupIfExists)
     {
         if (File.Exists(path))
         {
             var existing = UserConfigJson.LoadObject(path);
             if (JsonNode.DeepEquals(existing, document)) return;
+
+            // Same drift rule as the shared-config providers: content we did not
+            // write is only replaced when the drift decision says so.
+            var isOurs = previousFragment is not null &&
+                JsonNode.DeepEquals(existing, UserConfigJson.ParseFragment(previousFragment));
+            if (!isOurs && !overwriteModified)
+            {
+                throw new AgentPackException(
+                    $"{path} already exists with a different configuration.",
+                    "Remove the file (or rerun with --force to overwrite), then retry.",
+                    ExitCodes.DriftOrConflict);
+            }
+
             backupIfExists(path);
         }
 
@@ -401,8 +416,13 @@ public static class HookMerger
 
     private static string CommandOf(JsonObject? node) => node?["command"]?.GetValue<string>() ?? "";
 
-    private static string ClaudeStyleFragment(string eventName, string matcher, JsonObject handler) =>
-        new JsonObject { ["event"] = eventName, ["matcher"] = matcher, ["handler"] = CloneNode(handler) }.ToJsonString();
+    private static string ClaudeStyleFragment(string eventName, string? matcher, JsonObject handler)
+    {
+        var fragment = new JsonObject { ["event"] = eventName };
+        if (matcher is not null) fragment["matcher"] = matcher;
+        fragment["handler"] = CloneNode(handler);
+        return fragment.ToJsonString();
+    }
 
     private static string CursorFragment(string eventName, JsonObject entry) =>
         new JsonObject { ["event"] = eventName, ["entry"] = CloneNode(entry) }.ToJsonString();
@@ -429,14 +449,23 @@ public static class HookMerger
         };
     }
 
-    private static string? FindPowershellTwin(string supportPath, string bashCommand)
+    private static string? FindPowershellTwin(string supportPath, string commandPath, string bashCommand)
     {
         if (!Directory.Exists(supportPath)) return null;
-        var twinName = Path.GetFileNameWithoutExtension(bashCommand) + ".ps1";
-        return Directory.EnumerateFiles(supportPath, "*.ps1", SearchOption.AllDirectories)
-            .Any(f => Path.GetFileName(f).Equals(twinName, StringComparison.OrdinalIgnoreCase))
-            ? Path.ChangeExtension(bashCommand, ".ps1")
-            : null;
+        var twinName = Path.GetFileNameWithoutExtension(commandPath) + ".ps1";
+        var twin = Directory.EnumerateFiles(supportPath, "*.ps1", SearchOption.AllDirectories)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .FirstOrDefault(f => Path.GetFileName(f).Equals(twinName, StringComparison.OrdinalIgnoreCase));
+        if (twin is null) return null;
+
+        // The twin may live in a different subfolder than the bash script (e.g.
+        // content/win/hook.ps1); emit its real location, not a same-directory guess.
+        var bashTail = Path.GetRelativePath(supportPath, commandPath).Replace(Path.DirectorySeparatorChar, '/');
+        var twinTail = Path.GetRelativePath(supportPath, twin).Replace(Path.DirectorySeparatorChar, '/');
+        var normalized = bashCommand.Replace('\\', '/');
+        return normalized.EndsWith(bashTail, StringComparison.Ordinal)
+            ? normalized[..^bashTail.Length] + twinTail
+            : Path.ChangeExtension(bashCommand, ".ps1");
     }
 
     private static JsonObject ClaudeStyleHandler(Asset asset, string command) => new()
@@ -497,7 +526,17 @@ public static class HookMerger
 
     private static HookTrigger Trigger(Asset asset) => asset.Hook?.Trigger ?? HookTrigger.PreToolUse;
 
-    private static string Matcher(Asset asset) => string.IsNullOrWhiteSpace(asset.Hook?.Tool) ? "Bash" : asset.Hook.Tool;
+    /// <summary>
+    /// Tool matchers only apply to tool events. Claude Code matches SessionStart/Stop/
+    /// UserPromptSubmit groups on other dimensions (e.g. session source), so a defaulted
+    /// "Bash" matcher there would keep the hook from ever firing; those events get no
+    /// matcher unless the asset sets one explicitly.
+    /// </summary>
+    private static string? Matcher(Asset asset)
+    {
+        if (!string.IsNullOrWhiteSpace(asset.Hook?.Tool)) return asset.Hook.Tool;
+        return Trigger(asset) is HookTrigger.PreToolUse or HookTrigger.PostToolUse ? "Bash" : null;
+    }
 
     private static void CopyHookContent(string sourcePath, string supportPath, Action<string> backupIfExists)
     {

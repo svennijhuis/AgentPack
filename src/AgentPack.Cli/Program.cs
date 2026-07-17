@@ -4,6 +4,14 @@ using AgentPack.Core;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
+// Some non-TTY hosts (containers, docker exec) report a negative console width.
+// Spectre only falls back to its default when the width is exactly 0, so a negative
+// width truncates every line to "…" and the CLI appears to print nothing.
+if (AnsiConsole.Profile.Width <= 0)
+{
+    AnsiConsole.Profile.Width = 80;
+}
+
 var app = new CommandApp();
 app.Configure(config =>
 {

@@ -45,7 +45,7 @@ public sealed class Installer
                         var existing = lockFile.Find(asset.Id, provider, asset.Kind);
                         items.Add(new InstallPlanItem(
                             asset, provider, sourcePath, targetPath, target,
-                            DetermineState(asset, targetPath, target, existing, root, scope), existing));
+                            DetermineState(asset, targetPath, target, existing, root, scope, lockFile), existing));
                         continue;
                 }
             }
@@ -190,8 +190,16 @@ public sealed class Installer
 
             if (File.Exists(installedPath) || Directory.Exists(installedPath))
             {
-                Backup(installedPath, scope);
-                DeleteExisting(installedPath);
+                // Another surviving entry can own the same path (Codex and Cursor both
+                // use repo-root AGENTS.md); deleting it would break that install.
+                var sharedWithSurvivor = lockFile.Entries.Any(other =>
+                    !matches.Contains(other) &&
+                    PathsEqual(ResolveLockPath(other.Path, root), installedPath));
+                if (!sharedWithSurvivor)
+                {
+                    Backup(installedPath, scope);
+                    DeleteExisting(installedPath);
+                }
             }
 
             lockFile.Entries.Remove(entry);
@@ -246,6 +254,9 @@ public sealed class Installer
     public static string ResolveLockPath(string entryPath, string root) =>
         Path.IsPathRooted(entryPath) ? entryPath : Path.GetFullPath(Path.Combine(root, entryPath));
 
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(left, right, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+
     private static string ResolveFileSource(string sourcePath, string targetPath, string assetId)
     {
         if (File.Exists(sourcePath)) return sourcePath;
@@ -265,15 +276,25 @@ public sealed class Installer
             $"Keep exactly one file (or one named '{targetName}') in content/.");
     }
 
-    private static InstallState DetermineState(Asset asset, string targetPath, InstallTarget target, LockEntry? existing, string root, InstallScope scope)
+    private static InstallState DetermineState(Asset asset, string targetPath, InstallTarget target, LockEntry? existing, string root, InstallScope scope, AgentPackLock lockFile)
     {
         if (existing is null)
         {
             // Merge targets are designed to coexist with user content, so an existing
             // shared config file is not "unmanaged" — only copy targets are.
-            return target.Mode == InstallMode.CopyTree && (File.Exists(targetPath) || Directory.Exists(targetPath))
-                ? InstallState.UnmanagedPresent
-                : InstallState.Available;
+            if (target.Mode != InstallMode.CopyTree || (!File.Exists(targetPath) && !Directory.Exists(targetPath)))
+            {
+                return InstallState.Available;
+            }
+
+            // Two providers can share one target path (Codex and Cursor both use
+            // repo-root AGENTS.md). When the on-disk content is exactly what another
+            // entry installed, the file is agentpack-managed, not unmanaged.
+            var onDisk = ContentHash.Compute(targetPath);
+            var managedByOtherEntry = lockFile.Entries.Any(other =>
+                PathsEqual(ResolveLockPath(other.Path, root), targetPath) &&
+                onDisk.Equals(other.InstalledChecksum, StringComparison.OrdinalIgnoreCase));
+            return managedByOtherEntry ? InstallState.Available : InstallState.UnmanagedPresent;
         }
 
         var installedPath = ResolveLockPath(existing.Path, root);
@@ -414,7 +435,15 @@ public sealed class Installer
         var root = scope == InstallScope.User ? _paths.Home : Path.Combine(_paths.WorkingDirectory, ".agentpack");
         var backupsRoot = Path.Combine(root, "backups");
         var backupRoot = Path.Combine(backupsRoot, DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff"));
-        var target = Path.Combine(backupRoot, Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar)));
+        var leaf = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar));
+        var target = Path.Combine(backupRoot, leaf);
+        // Two same-named files backed up within one millisecond (e.g. AGENTS.md for
+        // two providers in one apply) must not overwrite each other's backup.
+        for (var i = 2; File.Exists(target) || Directory.Exists(target); i++)
+        {
+            target = Path.Combine(backupRoot, $"{leaf}-{i}");
+        }
+
         ContentHash.CopyTree(path, target);
         PruneBackups(backupsRoot);
     }

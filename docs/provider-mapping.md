@@ -63,6 +63,8 @@ Catalog triggers are normalized (`preToolUse`, `postToolUse`, `stop`, `sessionSt
 | userPromptSubmit | `UserPromptSubmit` | `UserPromptSubmit` | `userPromptSubmitted` | `beforeSubmitPrompt` |
 | notification | `Notification` | — (error with hint) | `notification` | — (error with hint) |
 
+The `tool` matcher is written only for the tool events (`preToolUse`/`postToolUse`, defaulting to `Bash` when unset). Other triggers get no matcher unless the asset sets one explicitly — Claude Code matches `SessionStart` groups on the session source, never a tool name, so a defaulted tool matcher there would keep the hook from firing.
+
 After installing a **Copilot repo-level hook**, the CLI reminds you to commit `.github/hooks/` — Copilot CLI picks the file up immediately, but the Copilot cloud coding agent reads hooks only from the default branch.
 
 ## MCP environment variables — per-target syntax
@@ -78,6 +80,8 @@ Secrets never enter the catalog: MCP env vars are declared **by name** in the ma
 | Codex | `.codex/config.toml` | `env_vars = ["TOKEN"]` (forwarded from the shell); HTTP headers via `env_http_headers = { Header = "TOKEN" }` |
 
 Note: Copilot CLI reads MCP servers only from its user-level config; the project-scope Copilot MCP install targets VS Code Copilot (`.vscode/mcp.json`), which the Copilot coding agent also understands.
+
+Because Copilot CLI performs no placeholder expansion, a **remote (HTTP/SSE) server with header env vars is rejected in Copilot user scope** — a literal `${VAR}` would be sent to the server as the header value. Install such servers at project scope, where VS Code expands `${env:VAR}`.
 
 Out-of-the-box friction each product adds by design (the CLI prints these as "next step" hints after apply): Claude Code asks the user to approve project `.mcp.json` servers on next start; the Copilot cloud coding agent reads repo hooks only from the default branch; MCP env vars must exist in the user's shell.
 

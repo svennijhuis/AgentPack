@@ -30,6 +30,27 @@ Fixes from a follow-up production-readiness review.
   content agentpack did not write; same-named files backed up in the same
   millisecond no longer overwrite each other's backup; source cache paths
   compare case-insensitively on Windows; sanitized source names cannot collide.
+- **Hooks on non-tool triggers fired never.** `stop`, `sessionStart`,
+  `userPromptSubmit`, and `notification` hooks were registered on Claude and
+  Codex inside a defaulted `"matcher": "Bash"` group, which those events never
+  match. The tool-matcher default now applies only to `preToolUse`/`postToolUse`;
+  other triggers get no matcher unless the asset sets one.
+- **Copilot user-scope remote MCP servers** with header env vars now fail with
+  a hint instead of writing `${VAR}` placeholders Copilot CLI never expands
+  (the literal string was sent as the header value).
+- **TOML escaping**: control characters in MCP commands/args no longer produce
+  invalid `.codex/config.toml`.
+- A PowerShell hook twin in a subfolder of `content/` is registered at its real
+  installed path instead of a same-directory guess.
+
+### Tests
+
+- The provider × kind × scope matrix now pins user-scope behavior (including
+  the Copilot/Cursor "managed in the editor" cases), every workspace-detection
+  marker, all hook trigger translations per provider, Codex TOML edge cases
+  (quoted server ids, escaping, args/env arrays), remote-server header syntax
+  per provider, and real on-disk landings for user scope, Cursor rules,
+  prompts, and Copilot's `.instructions.md`/`.prompt.md` naming.
 
 ### Changed
 

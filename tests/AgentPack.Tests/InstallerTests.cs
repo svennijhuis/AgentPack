@@ -231,6 +231,101 @@ public class InstallerTests
         Assert.Equal("# Org rules\n", File.ReadAllText(target));
     }
 
+    [Theory]
+    // Same asset, different landing per provider — including Copilot's renaming
+    // conventions and Cursor's .mdc rules, which only ever had their *planned*
+    // paths tested before.
+    [InlineData(ProviderName.Claude, AssetKind.Prompts, ".claude/commands/hello.md")]
+    [InlineData(ProviderName.Codex, AssetKind.Prompts, ".codex/prompts/hello.md")]
+    [InlineData(ProviderName.Cursor, AssetKind.Prompts, ".cursor/commands/hello.md")]
+    [InlineData(ProviderName.Copilot, AssetKind.Prompts, ".github/prompts/hello.prompt.md")]
+    [InlineData(ProviderName.Copilot, AssetKind.Instructions, ".github/instructions/hello.instructions.md")]
+    [InlineData(ProviderName.Cursor, AssetKind.Rules, ".cursor/rules/hello.mdc")]
+    public void ProjectInstallLandsFileAtProviderSpecificPath(ProviderName provider, AssetKind kind, string relativeTarget)
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var files = kind == AssetKind.Rules
+            ? new Dictionary<string, string> { ["hello.mdc"] = "rule\n" }
+            : new Dictionary<string, string> { ["hello.md"] = "# hello\n" };
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, kind, "hello", files: files);
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+
+        var results = installer.Apply(installer.Plan(loaded, [asset], [provider], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+
+        Assert.Equal(ApplyOutcome.Installed, Assert.Single(results).Outcome);
+        var target = Path.Combine(paths.WorkingDirectory, relativeTarget.Replace('/', Path.DirectorySeparatorChar));
+        Assert.True(File.Exists(target), $"expected file at {relativeTarget}");
+    }
+
+    [Fact]
+    public void CodexSkillsLandInAgentsFolder()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Skills, "demo");
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+
+        installer.Apply(installer.Plan(loaded, [asset], [ProviderName.Codex], InstallScope.Project).Items,
+            loaded, InstallScope.Project, _ => DriftAction.Keep);
+
+        Assert.True(File.Exists(Path.Combine(paths.WorkingDirectory, ".agents", "skills", "demo", "SKILL.md")));
+    }
+
+    [Fact]
+    public void UserScopeInstallsLandUnderProviderHomeNotWorkingDirectory()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var skill = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Skills, "demo");
+        var mcp = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Mcp, "github",
+            mcp: new McpServer { Server = "github", Command = "github-mcp-server", EnvVars = ["GITHUB_TOKEN"] });
+        var instructions = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Instructions, "org-rules",
+            files: new Dictionary<string, string> { ["org-rules.md"] = "# rules\n" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, skill, mcp, instructions);
+        var installer = new Installer(paths);
+
+        var plan = installer.Plan(loaded,
+            [skill, mcp, instructions],
+            [ProviderName.Claude, ProviderName.Codex, ProviderName.Copilot],
+            InstallScope.User);
+        installer.Apply(plan.Items, loaded, InstallScope.User, _ => DriftAction.Keep);
+
+        // Claude user MCP goes to .claude.json (project would be .mcp.json).
+        Assert.Contains("\"github\"", File.ReadAllText(Path.Combine(paths.ProviderHome, ".claude.json")));
+        // Copilot user skills live under ~/.copilot, not .github.
+        Assert.True(File.Exists(Path.Combine(paths.ProviderHome, ".copilot", "skills", "demo", "SKILL.md")));
+        // Codex user instructions go to ~/.codex/AGENTS.md, not the repo root.
+        Assert.True(File.Exists(Path.Combine(paths.ProviderHome, ".codex", "AGENTS.md")));
+        Assert.True(File.Exists(Path.Combine(paths.ProviderHome, ".claude", "skills", "demo", "SKILL.md")));
+        // Nothing may leak into the working directory in user scope.
+        Assert.False(File.Exists(Path.Combine(paths.WorkingDirectory, ".mcp.json")));
+        Assert.False(Directory.Exists(Path.Combine(paths.WorkingDirectory, ".github")));
+    }
+
+    [Fact]
+    public void UserScopeHookRegistersAbsoluteCommandPath()
+    {
+        using var temp = new TempDir();
+        var paths = TestData.Paths(temp);
+        var asset = TestData.WriteLocalAsset(paths.WorkingDirectory, AssetKind.Hooks, "guard",
+            hook: new HookSpec { Command = "hook.sh" });
+        var loaded = TestData.Loaded(paths.WorkingDirectory, asset);
+        var installer = new Installer(paths);
+
+        installer.Apply(installer.Plan(loaded, [asset], [ProviderName.Claude], InstallScope.User).Items,
+            loaded, InstallScope.User, _ => DriftAction.Keep);
+
+        var settings = File.ReadAllText(Path.Combine(paths.ProviderHome, ".claude", "settings.json"));
+        // Project scope registers "./..." relative commands; user scope must be absolute.
+        Assert.DoesNotContain("\"./", settings);
+        Assert.Contains("hook.sh", settings);
+        Assert.True(File.Exists(Path.Combine(paths.ProviderHome, ".claude", "hooks", "guard", "hook.sh")));
+    }
+
     [Fact]
     public void SharedInstructionsTargetSurvivesRemovingOneProvider()
     {

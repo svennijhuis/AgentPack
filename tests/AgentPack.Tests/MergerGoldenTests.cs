@@ -107,6 +107,158 @@ public class MergerGoldenTests
     }
 
     [Fact]
+    public void CodexTomlQuotedServerIdRoundTrip()
+    {
+        using var temp = new TempDir();
+        var targetPath = Path.Combine(temp.Path, ".codex", "config.toml");
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        File.WriteAllText(targetPath, "model = \"o4\"\n\n[mcp_servers.other]\ncommand = \"other-server\"\n");
+
+        // A dotted server id is not a bare TOML key and must be quoted in the header.
+        var asset = TestData.Asset(AssetKind.Mcp, "dotted", mcp: new McpServer
+        {
+            Server = "my.server",
+            Command = "run-server",
+            EnvVars = ["TOKEN"]
+        });
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Mcp, Path.Combine(".codex", "config.toml"), InstallMode.MergeMcp);
+        var result = McpMerger.Apply(asset, null, target, targetPath, InstallScope.Project, _ => { });
+
+        var merged = File.ReadAllText(targetPath);
+        Assert.Contains("[mcp_servers.\"my.server\"]", merged);
+        Assert.Equal(FragmentState.Present, McpMerger.CheckFragment(targetPath, ProviderName.Codex, InstallScope.Project, result.Fragment));
+
+        McpMerger.RemoveFragment(targetPath, ProviderName.Codex, InstallScope.Project, result.Fragment, _ => { });
+        var removed = File.ReadAllText(targetPath);
+        Assert.DoesNotContain("my.server", removed);
+        Assert.Contains("model = \"o4\"", removed);
+        Assert.Contains("[mcp_servers.other]", removed);
+    }
+
+    [Fact]
+    public void CodexTomlEscapesQuotesAndBackslashes()
+    {
+        using var temp = new TempDir();
+        var targetPath = Path.Combine(temp.Path, ".codex", "config.toml");
+        var asset = TestData.Asset(AssetKind.Mcp, "windowsy", mcp: new McpServer
+        {
+            Server = "windowsy",
+            Command = "C:\\tools\\run \"it\".exe"
+        });
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Mcp, Path.Combine(".codex", "config.toml"), InstallMode.MergeMcp);
+        McpMerger.Apply(asset, null, target, targetPath, InstallScope.Project, _ => { });
+
+        Assert.Contains("command = \"C:\\\\tools\\\\run \\\"it\\\".exe\"", File.ReadAllText(targetPath));
+    }
+
+    [Fact]
+    public void CodexTomlEscapesControlCharacters()
+    {
+        using var temp = new TempDir();
+        var targetPath = Path.Combine(temp.Path, ".codex", "config.toml");
+        var asset = TestData.Asset(AssetKind.Mcp, "multiline", mcp: new McpServer
+        {
+            Server = "multiline",
+            Command = "run",
+            Args = ["line1\nline2\ttabbed"]
+        });
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Mcp, Path.Combine(".codex", "config.toml"), InstallMode.MergeMcp);
+        McpMerger.Apply(asset, null, target, targetPath, InstallScope.Project, _ => { });
+
+        var output = File.ReadAllText(targetPath);
+        // A raw newline inside a TOML basic string is invalid; it must be escaped.
+        Assert.Contains("args = [\"line1\\nline2\\ttabbed\"]", output);
+    }
+
+    [Fact]
+    public void CodexTomlStdioWithArgsAndSortedEnvVars()
+    {
+        using var temp = new TempDir();
+        var targetPath = Path.Combine(temp.Path, ".codex", "config.toml");
+        var asset = TestData.Asset(AssetKind.Mcp, "argsy", mcp: new McpServer
+        {
+            Server = "argsy",
+            Command = "run-server",
+            Args = ["--port", "8080"],
+            EnvVars = ["B_TOKEN", "A_TOKEN"]
+        });
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Mcp, Path.Combine(".codex", "config.toml"), InstallMode.MergeMcp);
+        McpMerger.Apply(asset, null, target, targetPath, InstallScope.Project, _ => { });
+
+        var output = File.ReadAllText(targetPath);
+        Assert.Contains("args = [\"--port\", \"8080\"]", output);
+        Assert.Contains("env_vars = [\"A_TOKEN\", \"B_TOKEN\"]", output);
+    }
+
+    [Fact]
+    public void CopilotUserRemoteHeadersAreRejected()
+    {
+        using var temp = new TempDir();
+        // Copilot CLI does not expand env refs; a literal ${VAR} would be sent
+        // to the server as the header value, so this must fail with a hint.
+        var asset = TestData.Asset(AssetKind.Mcp, "remote-api", mcp: new McpServer
+        {
+            Server = "remote-api",
+            Transport = McpTransport.Http,
+            Url = "https://mcp.example.com/mcp",
+            HeaderEnvVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Authorization"] = "API_TOKEN" }
+        });
+        var targetPath = Path.Combine(temp.Path, ".copilot", "mcp-config.json");
+        var target = new InstallTarget(ProviderName.Copilot, AssetKind.Mcp, Path.Combine(".copilot", "mcp-config.json"), InstallMode.MergeMcp);
+
+        var ex = Assert.Throws<AgentPackException>(() =>
+            McpMerger.Apply(asset, null, target, targetPath, InstallScope.User, _ => { }));
+        Assert.Contains("project scope", ex.Hint);
+    }
+
+    [Theory]
+    [InlineData(ProviderName.Claude, ".mcp.json", "\"Authorization\": \"${API_TOKEN}\"")]
+    [InlineData(ProviderName.Cursor, ".cursor/mcp.json", "\"Authorization\": \"${env:API_TOKEN}\"")]
+    public void RemoteHeadersUseProviderPlaceholderSyntax(ProviderName provider, string relativeTarget, string expectedHeader)
+    {
+        using var temp = new TempDir();
+        var asset = TestData.Asset(AssetKind.Mcp, "remote-api", mcp: new McpServer
+        {
+            Server = "remote-api",
+            Transport = McpTransport.Http,
+            Url = "https://mcp.example.com/mcp",
+            HeaderEnvVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Authorization"] = "API_TOKEN" }
+        });
+        var targetPath = Path.Combine(temp.Path, relativeTarget.Replace('/', Path.DirectorySeparatorChar));
+        var target = new InstallTarget(provider, AssetKind.Mcp, relativeTarget, InstallMode.MergeMcp);
+        McpMerger.Apply(asset, null, target, targetPath, InstallScope.Project, _ => { });
+
+        var output = File.ReadAllText(targetPath);
+        Assert.Contains("\"url\": \"https://mcp.example.com/mcp\"", output);
+        Assert.Contains(expectedHeader, output);
+    }
+
+    [Fact]
+    public void StdioServerWithoutEnvVarsWritesEmptyEnvObject()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.Asset(AssetKind.Mcp, "plain", mcp: new McpServer { Server = "plain", Command = "run" });
+        var targetPath = Path.Combine(temp.Path, ".mcp.json");
+        var target = new InstallTarget(ProviderName.Claude, AssetKind.Mcp, ".mcp.json", InstallMode.MergeMcp);
+        McpMerger.Apply(asset, null, target, targetPath, InstallScope.Project, _ => { });
+
+        Assert.Contains("\"env\": {}", File.ReadAllText(targetPath));
+    }
+
+    [Fact]
+    public void CursorHookMergeKeepsExistingVersionField()
+    {
+        using var temp = new TempDir();
+        var targetPath = Path.Combine(temp.Path, ".cursor", "hooks.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        File.WriteAllText(targetPath, "{ \"version\": 2, \"hooks\": {} }");
+
+        var config = ApplyHook(temp, ProviderName.Cursor, new HookSpec { Trigger = HookTrigger.PreToolUse, Command = "hook.sh" });
+
+        Assert.Contains("\"version\": 2", config);
+    }
+
+    [Fact]
     public void McpMergePreservesUnrelatedUserEntries()
     {
         using var temp = new TempDir();
@@ -245,6 +397,104 @@ public class MergerGoldenTests
             """), Normalize(File.ReadAllText(targetPath)));
     }
 
+    [Theory]
+    // The event vocabulary diverges per provider: Claude/Codex PascalCase,
+    // Cursor and Copilot camelCase with different renames for the same trigger.
+    [InlineData(ProviderName.Claude, HookTrigger.Stop, "Stop")]
+    [InlineData(ProviderName.Claude, HookTrigger.SessionStart, "SessionStart")]
+    [InlineData(ProviderName.Claude, HookTrigger.UserPromptSubmit, "UserPromptSubmit")]
+    [InlineData(ProviderName.Claude, HookTrigger.Notification, "Notification")]
+    [InlineData(ProviderName.Codex, HookTrigger.Stop, "Stop")]
+    [InlineData(ProviderName.Codex, HookTrigger.SessionStart, "SessionStart")]
+    [InlineData(ProviderName.Codex, HookTrigger.UserPromptSubmit, "UserPromptSubmit")]
+    [InlineData(ProviderName.Cursor, HookTrigger.PostToolUse, "postToolUse")]
+    [InlineData(ProviderName.Cursor, HookTrigger.Stop, "stop")]
+    [InlineData(ProviderName.Cursor, HookTrigger.SessionStart, "sessionStart")]
+    [InlineData(ProviderName.Cursor, HookTrigger.UserPromptSubmit, "beforeSubmitPrompt")]
+    [InlineData(ProviderName.Copilot, HookTrigger.PostToolUse, "postToolUse")]
+    [InlineData(ProviderName.Copilot, HookTrigger.Stop, "agentStop")]
+    [InlineData(ProviderName.Copilot, HookTrigger.SessionStart, "sessionStart")]
+    [InlineData(ProviderName.Copilot, HookTrigger.UserPromptSubmit, "userPromptSubmitted")]
+    [InlineData(ProviderName.Copilot, HookTrigger.Notification, "notification")]
+    public void HookTriggerVocabularyPerProvider(ProviderName provider, HookTrigger trigger, string expectedEvent)
+    {
+        using var temp = new TempDir();
+        var config = ApplyHook(temp, provider, new HookSpec { Trigger = trigger, Command = "hook.sh" });
+
+        Assert.Contains($"\"{expectedEvent}\"", config);
+        if (trigger != HookTrigger.PostToolUse)
+        {
+            // Non-tool events must not get a defaulted tool matcher — it would
+            // keep the hook from ever firing (Claude matches SessionStart on
+            // session source, not tool names).
+            Assert.DoesNotContain("matcher", config);
+        }
+    }
+
+    [Theory]
+    [InlineData(ProviderName.Codex)]
+    [InlineData(ProviderName.Cursor)]
+    public void NotificationTriggerIsRejectedWhereUnsupported(ProviderName provider)
+    {
+        using var temp = new TempDir();
+        var ex = Assert.Throws<AgentPackException>(() =>
+            ApplyHook(temp, provider, new HookSpec { Trigger = HookTrigger.Notification, Command = "hook.sh" }));
+        Assert.Contains("notification", ex.Message);
+    }
+
+    [Fact]
+    public void ExplicitMatcherOnNonToolEventIsHonored()
+    {
+        using var temp = new TempDir();
+        var config = ApplyHook(temp, ProviderName.Claude,
+            new HookSpec { Trigger = HookTrigger.SessionStart, Tool = "startup", Command = "hook.sh" });
+
+        Assert.Contains("\"matcher\": \"startup\"", config);
+    }
+
+    [Fact]
+    public void SessionStartHookGoldenHasNoMatcher()
+    {
+        using var temp = new TempDir();
+        var config = ApplyHook(temp, ProviderName.Claude,
+            new HookSpec { Trigger = HookTrigger.SessionStart, Command = "hook.sh", TimeoutSec = 30 });
+
+        Assert.Equal(Normalize("""
+            {
+              "hooks": {
+                "SessionStart": [
+                  {
+                    "hooks": [
+                      {
+                        "type": "command",
+                        "command": "./.claude/hooks/notify/hook.sh",
+                        "timeout": 30
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+            """), Normalize(config));
+    }
+
+    private static string ApplyHook(TempDir temp, ProviderName provider, HookSpec hook)
+    {
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "notify", hook: hook);
+        var sourcePath = Path.Combine(temp.Path, "assets", "hooks", "notify", "content");
+        var relative = provider switch
+        {
+            ProviderName.Claude => Path.Combine(".claude", "settings.json"),
+            ProviderName.Codex => Path.Combine(".codex", "hooks.json"),
+            ProviderName.Cursor => Path.Combine(".cursor", "hooks.json"),
+            _ => Path.Combine(".github", "hooks", "notify.json")
+        };
+        var targetPath = Path.Combine(temp.Path, relative);
+        var target = new InstallTarget(provider, AssetKind.Hooks, relative, InstallMode.MergeHook);
+        HookMerger.Apply(asset, sourcePath, target, targetPath, temp.Path, InstallScope.Project, _ => { });
+        return File.ReadAllText(targetPath);
+    }
+
     [Fact]
     public void CopilotHookGolden()
     {
@@ -311,6 +561,29 @@ public class MergerGoldenTests
         HookMerger.Apply(asset, sourcePath, target, targetPath, temp.Path, InstallScope.Project, _ => { });
 
         Assert.Equal(first, File.ReadAllText(targetPath));
+    }
+
+    [Fact]
+    public void CopilotPowershellTwinInSubfolderUsesItsRealPath()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "ps-twin",
+            files: new Dictionary<string, string>
+            {
+                ["hook.sh"] = "#!/usr/bin/env bash\necho ok\n",
+                ["win/hook.ps1"] = "Write-Output ok\n"
+            },
+            hook: new HookSpec { Command = "hook.sh" });
+        var sourcePath = Path.Combine(temp.Path, "assets", "hooks", "ps-twin", "content");
+        var targetPath = Path.Combine(temp.Path, ".github", "hooks", "ps-twin.json");
+        var target = new InstallTarget(ProviderName.Copilot, AssetKind.Hooks, Path.Combine(".github", "hooks", "ps-twin.json"), InstallMode.MergeHook);
+
+        HookMerger.Apply(asset, sourcePath, target, targetPath, temp.Path, InstallScope.Project, _ => { });
+
+        // The registered path must be where the twin actually landed, not a
+        // same-directory guess next to hook.sh.
+        Assert.Contains("\"powershell\": \"./.github/hooks/ps-twin/win/hook.ps1\"", File.ReadAllText(targetPath));
+        Assert.True(File.Exists(Path.Combine(temp.Path, ".github", "hooks", "ps-twin", "win", "hook.ps1")));
     }
 
     [Fact]

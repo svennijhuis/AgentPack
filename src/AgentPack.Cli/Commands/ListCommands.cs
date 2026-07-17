@@ -41,19 +41,54 @@ public sealed class ListCommand : Command<ListCommand.Settings>
         }
 
         var assets = CommandHelpers.SelectAssets(loaded.Catalog, targets, settings.Groups, providerFilter.Count > 0 ? providerFilter : null);
+
+        // The common case is all-recommended, all-local: those columns then say nothing — drop them.
+        var showStatus = assets.Any(x => x.Status != AssetStatus.Recommended);
+        var showSource = assets.Any(x => x.Source is AssetSource.External);
+        var descriptionRoom = Math.Clamp(Spectre.Console.AnsiConsole.Profile.Width - 60, 24, 120);
+
+        var headers = new List<string> { "ID", "Kind", "Version", "Groups", "Providers" };
+        if (showStatus) headers.Add("Status");
+        if (showSource) headers.Add("Source");
+        headers.Add("Description");
+
+        var filtered = targets.Length > 0 || settings.Groups.Length > 0 || providerFilter.Count > 0;
         Output.Table(
-            ["ID", "Kind", "Version", "Groups", "Providers", "Status", "Source", "Description"],
-            assets.Select(asset => new[]
+            headers.ToArray(),
+            assets.Select(asset =>
             {
-                asset.Id,
-                asset.Kind.Display(),
-                asset.Version.ToString(),
-                string.Join(",", asset.Groups),
-                asset.Providers.Count == ProviderNames.All.Count ? "all" : string.Join(",", asset.Providers.Select(ProviderNames.Display)),
-                asset.Status.ToString().ToLowerInvariant(),
-                asset.Source is AssetSource.External ? "external" : "local",
-                asset.Description
-            }));
+                var row = new List<string>
+                {
+                    asset.Id,
+                    asset.Kind.Display(),
+                    asset.Version.ToString(),
+                    string.Join(",", asset.Groups),
+                    asset.Providers.Count == ProviderNames.All.Count ? "all" : string.Join(",", asset.Providers.Select(ProviderNames.Display))
+                };
+                if (showStatus)
+                {
+                    row.Add(asset.Status switch
+                    {
+                        AssetStatus.Deprecated => "[yellow]deprecated[/]",
+                        AssetStatus.Blocked => "[red]blocked[/]",
+                        AssetStatus.Experimental => "[grey]experimental[/]",
+                        _ => "recommended"
+                    });
+                }
+                if (showSource) row.Add(asset.Source is AssetSource.External ? "external" : "local");
+                row.Add(Output.Fit(asset.Description, descriptionRoom));
+                return row.ToArray();
+            }),
+            emptyMessage: filtered
+                ? "No assets match these filters. Run 'agentpack list' without filters to see everything."
+                : "The catalog is empty. Scaffold an asset with 'agentpack new' or add a source with 'agentpack source add'.",
+            markupColumns: showStatus ? [5] : null);
+
+        if (assets.Count >= 10)
+        {
+            Output.Info($"{assets.Count} assets — narrow with 'agentpack list <kind>', --group <name>, or --provider <name>.");
+        }
+
         return 0;
     }
 }
@@ -85,22 +120,49 @@ public sealed class StatusCommand : Command<StatusCommand.Settings>
         var scope = settings.ResolveScope(session.Paths);
         var lockFile = JsonStore.Load<AgentPackLock>(session.Paths.GetLockPath(scope));
         var assets = loaded.Catalog.Assets.ToDictionary(x => x.Id, StringComparer.OrdinalIgnoreCase);
+        var scopeName = scope == InstallScope.User ? "user" : "project";
 
+        var updates = 0;
+        var removed = 0;
         Output.Table(
             ["ID", "Kind", "Provider", "Installed", "Latest", "Pinned", "State"],
             lockFile.Entries.OrderBy(x => x.Id, StringComparer.Ordinal).Select(entry =>
             {
                 assets.TryGetValue(entry.Id, out var asset);
                 var latest = asset?.Version.ToString() ?? "(removed from catalog)";
-                var state = asset is null
-                    ? "removed from catalog"
-                    : asset.Version.IsNewerThan(entry.Version) ? "update available" : "installed";
+                string state;
+                if (asset is null)
+                {
+                    removed++;
+                    state = "[red]removed from catalog[/]";
+                }
+                else if (asset.Version.IsNewerThan(entry.Version))
+                {
+                    updates++;
+                    state = "[blue]update available[/]";
+                }
+                else
+                {
+                    state = "installed";
+                }
+
                 return new[]
                 {
                     entry.Id, entry.Kind.Display(), entry.Provider.Display(),
                     entry.Version, latest, entry.Pinned ? "yes" : "no", state
                 };
-            }));
+            }),
+            emptyMessage: $"Nothing installed in {scopeName} scope yet. Run 'agentpack add' to pick assets.",
+            markupColumns: [6]);
+
+        if (lockFile.Entries.Count > 0)
+        {
+            var summary = $"{lockFile.Entries.Count} installed ({scopeName} scope)";
+            if (updates > 0) summary += $" — {updates} update{(updates == 1 ? "" : "s")} available, run 'agentpack upgrade'";
+            if (removed > 0) summary += $" — {removed} no longer in the catalog";
+            Output.Info(summary + ".");
+        }
+
         return 0;
     }
 }

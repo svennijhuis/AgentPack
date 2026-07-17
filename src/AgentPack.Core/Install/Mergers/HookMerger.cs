@@ -177,11 +177,7 @@ public static class HookMerger
                 {
                     [ClaudeStyleEvent(target.Provider, asset)] = new JsonArray
                     {
-                        new JsonObject
-                        {
-                            ["matcher"] = Matcher(asset),
-                            ["hooks"] = new JsonArray { ClaudeStyleHandler(asset, command) }
-                        }
+                        MatcherGroup(Matcher(asset), ClaudeStyleHandler(asset, command))
                     }
                 }
             }
@@ -222,23 +218,20 @@ public static class HookMerger
         AtomicWrite.Text(path, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 
-    private static bool MergeClaudeStyleHook(JsonObject hooks, string path, string matcher, JsonObject handler, string eventName,
+    private static bool MergeClaudeStyleHook(JsonObject hooks, string path, string? matcher, JsonObject handler, string eventName,
         string? previousFragment, bool overwriteModified)
     {
         var changed = ReplaceableClaudeStyleHandler(hooks, path, eventName, handler, previousFragment, overwriteModified);
 
         if (hooks[eventName] is not JsonArray eventArray)
         {
-            hooks[eventName] = new JsonArray
-            {
-                new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { CloneNode(handler) } }
-            };
+            hooks[eventName] = new JsonArray { MatcherGroup(matcher, handler) };
             return true;
         }
 
         foreach (var node in eventArray.OfType<JsonObject>())
         {
-            if (!matcher.Equals(node["matcher"]?.GetValue<string>(), StringComparison.OrdinalIgnoreCase)) continue;
+            if (!MatcherEquals(node["matcher"]?.GetValue<string>(), matcher)) continue;
             if (node["hooks"] is not JsonArray handlers)
             {
                 node["hooks"] = new JsonArray { CloneNode(handler) };
@@ -250,8 +243,16 @@ public static class HookMerger
             return true;
         }
 
-        eventArray.Add(new JsonObject { ["matcher"] = matcher, ["hooks"] = new JsonArray { CloneNode(handler) } });
+        eventArray.Add(MatcherGroup(matcher, handler));
         return true;
+    }
+
+    private static JsonObject MatcherGroup(string? matcher, JsonObject handler)
+    {
+        var group = new JsonObject();
+        if (matcher is not null) group["matcher"] = matcher;
+        group["hooks"] = new JsonArray { CloneNode(handler) };
+        return group;
     }
 
     /// <summary>
@@ -415,8 +416,13 @@ public static class HookMerger
 
     private static string CommandOf(JsonObject? node) => node?["command"]?.GetValue<string>() ?? "";
 
-    private static string ClaudeStyleFragment(string eventName, string matcher, JsonObject handler) =>
-        new JsonObject { ["event"] = eventName, ["matcher"] = matcher, ["handler"] = CloneNode(handler) }.ToJsonString();
+    private static string ClaudeStyleFragment(string eventName, string? matcher, JsonObject handler)
+    {
+        var fragment = new JsonObject { ["event"] = eventName };
+        if (matcher is not null) fragment["matcher"] = matcher;
+        fragment["handler"] = CloneNode(handler);
+        return fragment.ToJsonString();
+    }
 
     private static string CursorFragment(string eventName, JsonObject entry) =>
         new JsonObject { ["event"] = eventName, ["entry"] = CloneNode(entry) }.ToJsonString();
@@ -511,7 +517,17 @@ public static class HookMerger
 
     private static HookTrigger Trigger(Asset asset) => asset.Hook?.Trigger ?? HookTrigger.PreToolUse;
 
-    private static string Matcher(Asset asset) => string.IsNullOrWhiteSpace(asset.Hook?.Tool) ? "Bash" : asset.Hook.Tool;
+    /// <summary>
+    /// Tool matchers only apply to tool events. Claude Code matches SessionStart/Stop/
+    /// UserPromptSubmit groups on other dimensions (e.g. session source), so a defaulted
+    /// "Bash" matcher there would keep the hook from ever firing; those events get no
+    /// matcher unless the asset sets one explicitly.
+    /// </summary>
+    private static string? Matcher(Asset asset)
+    {
+        if (!string.IsNullOrWhiteSpace(asset.Hook?.Tool)) return asset.Hook.Tool;
+        return Trigger(asset) is HookTrigger.PreToolUse or HookTrigger.PostToolUse ? "Bash" : null;
+    }
 
     private static void CopyHookContent(string sourcePath, string supportPath, Action<string> backupIfExists)
     {

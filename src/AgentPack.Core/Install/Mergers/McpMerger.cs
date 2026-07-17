@@ -182,6 +182,21 @@ public static class McpMerger
     private static bool OmitEnvObject(ProviderName provider, InstallScope scope) =>
         provider == ProviderName.Copilot && scope == InstallScope.User;
 
+    /// <summary>
+    /// Copilot CLI does not expand env references, which is fine for stdio (the server
+    /// inherits the shell env — see <see cref="OmitEnvObject"/>) but fatal for remote
+    /// headers: a literal "${VAR}" would be sent to the server as the header value.
+    /// </summary>
+    private static void RequireHeaderExpansion(ProviderName provider, InstallScope scope, string serverName)
+    {
+        if (provider == ProviderName.Copilot && scope == InstallScope.User)
+        {
+            throw new AgentPackException(
+                $"MCP server '{serverName}' needs env-var header expansion, which Copilot CLI does not support in user scope.",
+                "Install it at project scope (--project), where VS Code expands ${env:VAR} in .vscode/mcp.json.");
+        }
+    }
+
     private static JsonObject BuildTypedServer(McpServer mcp, ProviderName provider, InstallScope scope)
     {
         var server = new JsonObject { ["type"] = TransportName(mcp.Transport) };
@@ -200,6 +215,7 @@ public static class McpMerger
             server["url"] = mcp.Url ?? "";
             if (mcp.HeaderEnvVars.Count > 0)
             {
+                RequireHeaderExpansion(provider, scope, mcp.Server);
                 var headers = new JsonObject();
                 foreach (var (header, envVar) in mcp.HeaderEnvVars.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
                 {
@@ -246,6 +262,7 @@ public static class McpMerger
             server["url"] = StringValue(raw, "url") ?? "";
             if (raw["headerEnvVars"] is JsonObject headers)
             {
+                RequireHeaderExpansion(provider, scope, assetId);
                 var normalized = new JsonObject();
                 foreach (var (header, value) in headers)
                 {
@@ -554,7 +571,25 @@ public static class McpMerger
 
     private static string TomlHeader(string serverId) => "[mcp_servers." + TomlKey(serverId) + "]";
     private static string TomlKey(string value) => BareTomlKey.IsMatch(value) ? value : TomlString(value);
-    private static string TomlString(string value) => "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    private static string TomlString(string value)
+    {
+        var builder = new StringBuilder(value.Length + 2).Append('"');
+        foreach (var c in value)
+        {
+            switch (c)
+            {
+                case '\\': builder.Append("\\\\"); break;
+                case '"': builder.Append("\\\""); break;
+                case '\n': builder.Append("\\n"); break;
+                case '\r': builder.Append("\\r"); break;
+                case '\t': builder.Append("\\t"); break;
+                // TOML basic strings cannot contain raw control characters.
+                default: builder.Append(char.IsControl(c) ? "\\u" + ((int)c).ToString("X4") : c); break;
+            }
+        }
+
+        return builder.Append('"').ToString();
+    }
 
     private static string? FindTomlSection(string text, string header)
     {

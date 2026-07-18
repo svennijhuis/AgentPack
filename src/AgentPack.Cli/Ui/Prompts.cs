@@ -40,13 +40,15 @@ public static class Prompts
         {
             var done = new KindChoice($"[green]Done[/] — {(cart.Count == 0 ? "nothing selected" : $"{cart.Count} selected")}", Done: true);
             var everything = new KindChoice(KindLabel("everything", assets, cart), Kind: null);
+            var search = new KindChoice("find one asset [grey](type its name)[/]", Search: true);
             var prompt = new SelectionPrompt<KindChoice>()
                 .Title($"[bold]{Markup.Escape(title)}[/] [grey]({assets.Count} assets — pick a category, tick assets, repeat; type to search)[/]")
-                .PageSize(Math.Max(pageSize, kinds.Count + 3))
+                .PageSize(Math.Max(pageSize, kinds.Count + 4))
                 .EnableSearch()
                 .UseConverter(choice => choice.Label);
             prompt.AddChoices(kinds
                 .Select(g => new KindChoice(KindLabel(g.Key.Display(), g.ToList(), cart), g.Key))
+                .Prepend(search)
                 .Prepend(everything)
                 .Prepend(done)
                 .Append(new KindChoice("[grey]Cancel[/]", Cancel: true)));
@@ -54,6 +56,11 @@ public static class Prompts
             var choice = AnsiConsole.Prompt(prompt);
             if (choice.Done) break;
             if (choice.Cancel) return [];
+            if (choice.Search)
+            {
+                SearchAssets(assets, cart, pageSize);
+                continue;
+            }
 
             var subset = choice.Kind is { } kind ? kinds.First(g => g.Key == kind).ToList() : assets.ToList();
             var scope = choice.Kind is { } k ? k.Display() : "everything";
@@ -69,6 +76,41 @@ public static class Prompts
         }
 
         return cart.Values.OrderBy(x => x.Kind).ThenBy(x => x.Id, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Type-to-find across every asset regardless of kind; picking one toggles it
+    /// in the cart. Loops so several assets can be found in a row.
+    /// </summary>
+    private static void SearchAssets(IReadOnlyList<Asset> assets, Dictionary<string, Asset> cart, int pageSize)
+    {
+        while (true)
+        {
+            var prompt = new SelectionPrompt<AssetChoice>()
+                .Title($"[bold]Find an asset[/] [grey](type to filter, enter toggles it, {cart.Count} selected)[/]")
+                .PageSize(pageSize)
+                .EnableSearch()
+                .UseConverter(choice => choice.Label);
+            prompt.AddChoices(assets
+                .OrderBy(x => x.Kind).ThenBy(x => x.Id, StringComparer.Ordinal)
+                .Select(asset => new AssetChoice(
+                    $"{(cart.ContainsKey(asset.Id) ? "[green]✓[/] " : "  ")}{Label(asset)} [grey]· {asset.Kind.Display()}[/]",
+                    asset))
+                .Prepend(new AssetChoice("[grey]back to categories[/]", null)));
+
+            var picked = AnsiConsole.Prompt(prompt).Asset;
+            if (picked is null) return;
+
+            if (!cart.Remove(picked.Id))
+            {
+                cart[picked.Id] = picked;
+                Output.Info($"+ {picked.Id} added ({cart.Count} selected)");
+            }
+            else
+            {
+                Output.Info($"- {picked.Id} removed ({cart.Count} selected)");
+            }
+        }
     }
 
     private static IReadOnlyList<Asset> Checklist(IReadOnlyList<Asset> assets, string title, HashSet<string> preselectedIds, int pageSize)
@@ -220,5 +262,5 @@ public static class Prompts
 
     private sealed record AssetChoice(string Label, Asset? Asset);
 
-    private sealed record KindChoice(string Label, AssetKind? Kind = null, bool Done = false, bool Cancel = false);
+    private sealed record KindChoice(string Label, AssetKind? Kind = null, bool Done = false, bool Cancel = false, bool Search = false);
 }

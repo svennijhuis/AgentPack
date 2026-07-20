@@ -228,10 +228,10 @@ public static class CommandHelpers
         Output.Plan(title, plan, scope, session.Paths.WorkingDirectory, session.Paths.ProviderHome);
         if (!apply || plan.Items.Count == 0) return 0;
 
+        // Output.Plan already reported "Everything is already up to date." for this case.
         var actionable = plan.Items.Where(x => x.State != InstallState.Installed && x.State != InstallState.Pinned).ToList();
         if (actionable.Count == 0)
         {
-            Output.Info("Everything is already up to date.");
             return 0;
         }
 

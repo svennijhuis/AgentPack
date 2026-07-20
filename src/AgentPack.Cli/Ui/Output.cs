@@ -41,12 +41,19 @@ public static class Output
     /// Renders a table. Cells are escaped except in <paramref name="markupColumns"/>,
     /// whose cells the caller styles (and escapes) itself.
     /// </summary>
-    public static void Table(string[] headers, IEnumerable<string[]> rows, string? emptyMessage = null, int[]? markupColumns = null)
+    public static void Table(
+        string[] headers,
+        IEnumerable<string[]> rows,
+        string? emptyMessage = null,
+        int[]? markupColumns = null,
+        int[]? noWrapColumns = null)
     {
         var table = new Table().Border(TableBorder.Rounded).BorderColor(Color.Grey);
-        foreach (var header in headers)
+        for (var index = 0; index < headers.Length; index++)
         {
-            table.AddColumn(new TableColumn($"[bold]{Markup.Escape(header)}[/]"));
+            var column = new TableColumn($"[bold]{Markup.Escape(headers[index])}[/]");
+            if (noWrapColumns is not null && noWrapColumns.Contains(index)) column.NoWrap();
+            table.AddColumn(column);
         }
 
         var any = false;

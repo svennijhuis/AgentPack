@@ -125,6 +125,21 @@ public class CatalogLoadingTests
     }
 
     [Fact]
+    public void ProjectCatalogIsStandaloneWhenNoBaseCatalogIsConfigured()
+    {
+        using var temp = new TempDir();
+        var root = Path.Combine(temp.Path, "work");
+        var projectRoot = Path.Combine(root, ".agentpack");
+        WriteMinimalCatalog(projectRoot);
+        WriteAsset(projectRoot, "skills", "personal-skill", "name: Personal Skill\nversion: 1.0.0\n");
+
+        var loaded = Load(temp);
+
+        Assert.Equal(Path.Combine(projectRoot, "catalog.yaml"), loaded.PrimaryCatalogPath);
+        Assert.Contains(loaded.Catalog.Assets, x => x.Id == "personal-skill");
+    }
+
+    [Fact]
     public void ChecksumComesFromCatalogLockWhenManifestOmitsIt()
     {
         using var temp = new TempDir();
@@ -165,6 +180,31 @@ public class CatalogLoadingTests
 
         var loaded = new CatalogLayerLoader(sources, paths).Load();
         Assert.Contains(loaded.Catalog.Assets, x => x.Id == "org-skill");
+    }
+
+    [Fact]
+    public void RegisteredSourceIsMergedWithHigherPrecedenceProjectOverlay()
+    {
+        using var temp = new TempDir();
+        var catalogRepo = Path.Combine(temp.Path, "org-catalog");
+        WriteMinimalCatalog(catalogRepo);
+        WriteAsset(catalogRepo, "skills", "shared-skill", "name: Org Skill\nversion: 1.0.0\n");
+        Run("git", ["init", "-q", "-b", "main"], catalogRepo);
+        Run("git", ["add", "-A"], catalogRepo);
+        Run("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"], catalogRepo);
+
+        var paths = TestData.Paths(temp, "consumer");
+        var overlayRoot = Path.Combine(paths.WorkingDirectory, ".agentpack");
+        WriteMinimalCatalog(overlayRoot);
+        WriteAsset(overlayRoot, "skills", "shared-skill", "name: Team Override\nversion: 2.0.0\n");
+        WriteAsset(overlayRoot, "prompts", "team-only", "name: Team Only\nversion: 1.0.0\n");
+
+        var sources = new SourceManager(paths);
+        sources.AddSource("org", catalogRepo);
+        var loaded = new CatalogLayerLoader(sources, paths).Load();
+
+        Assert.Equal("2.0.0", loaded.Catalog.Assets.Single(x => x.Id == "shared-skill").Version.ToString());
+        Assert.Contains(loaded.Catalog.Assets, x => x.Id == "team-only");
     }
 
     private static void Run(string file, string[] args, string cwd)

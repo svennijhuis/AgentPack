@@ -6,12 +6,40 @@ using Spectre.Console.Cli;
 
 namespace AgentPack.Cli.Commands;
 
+public sealed class InitCommand : Command<InitCommand.Settings>
+{
+    public sealed class Settings : CommandSettings
+    {
+        [CommandOption("--overlay")]
+        [Description("Create .agentpack/catalog.yaml for assets owned by this project or service team.")]
+        public bool Overlay { get; set; }
+    }
+
+    public override int Execute(CommandContext context, Settings settings)
+    {
+        var catalogPath = CatalogScaffolder.CatalogPath(settings.Overlay);
+        if (File.Exists(catalogPath))
+        {
+            throw new AgentPackException(
+                $"A catalog already exists at {catalogPath}.",
+                "Use the existing catalog; agentpack init never overwrites it.");
+        }
+
+        CatalogScaffolder.Create(catalogPath);
+        Output.Success($"Created {catalogPath}");
+        Output.Info(settings.Overlay
+            ? "Next: add a project-owned asset with 'agentpack new skills <id> --overlay', then open a PR."
+            : "Next: add an asset with 'agentpack new skills <id>', then validate it with 'agentpack catalog validate'.");
+        return ExitCodes.Ok;
+    }
+}
+
 public sealed class NewCommand : Command<NewCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "<kind>")]
-        [Description("Asset kind: skills, hooks, mcp, tools, instructions, rules, prompts, templates.")]
+        [Description("Asset kind: skills, hooks, mcp, tools, instructions, rules, prompts, templates, agents.")]
         public string Kind { get; set; } = "";
 
         [CommandArgument(1, "<id>")]
@@ -39,6 +67,10 @@ public sealed class NewCommand : Command<NewCommand.Settings>
         [CommandOption("--force")]
         [Description("Overwrite an existing manifest.")]
         public bool Force { get; set; }
+
+        [CommandOption("--overlay")]
+        [Description("Create the asset in .agentpack/assets for this project or service team.")]
+        public bool Overlay { get; set; }
     }
 
     public override int Execute(CommandContext context, Settings settings)
@@ -46,7 +78,20 @@ public sealed class NewCommand : Command<NewCommand.Settings>
         var kind = AssetKinds.Parse(settings.Kind);
         var id = settings.Id.Trim().ToLowerInvariant();
 
-        var assetRoot = Path.Combine("assets", kind.Display(), id);
+        var catalogCreated = false;
+        if (settings.Overlay)
+        {
+            var overlayCatalog = CatalogScaffolder.CatalogPath(overlay: true);
+            if (!File.Exists(overlayCatalog))
+            {
+                CatalogScaffolder.Create(overlayCatalog);
+                catalogCreated = true;
+            }
+        }
+
+        var assetRoot = settings.Overlay
+            ? Path.Combine(".agentpack", "assets", kind.Display(), id)
+            : Path.Combine("assets", kind.Display(), id);
         var manifest = Path.Combine(assetRoot, "agentpack.yaml");
         if (File.Exists(manifest) && !settings.Force)
         {
@@ -74,10 +119,25 @@ public sealed class NewCommand : Command<NewCommand.Settings>
             settings.Owner,
             externalSource: null));
 
+        if (catalogCreated) Output.Success("Created .agentpack/catalog.yaml");
         Output.Success($"Created {manifest}");
         Output.Success($"Created content in {contentRoot}");
         Output.Info("Next: edit the content, commit on a branch, and open a PR. CI runs 'agentpack catalog validate' and 'agentpack catalog lock'.");
         return 0;
+    }
+}
+
+public static class CatalogScaffolder
+{
+    private const string MinimalCatalog = "schemaVersion: \"1\"\ncatalogVersion: 0.1.0\n";
+
+    public static string CatalogPath(bool overlay) =>
+        overlay ? Path.Combine(".agentpack", "catalog.yaml") : "catalog.yaml";
+
+    public static void Create(string catalogPath)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(catalogPath))!);
+        File.WriteAllText(catalogPath, MinimalCatalog);
     }
 }
 

@@ -12,6 +12,19 @@ if (AnsiConsole.Profile.Width <= 0)
     AnsiConsole.Profile.Width = 80;
 }
 
+if (args.Length == 0)
+{
+    GettingStarted.Show();
+    return ExitCodes.Ok;
+}
+
+// Support the familiar `agentpack help [command...]` form while keeping
+// Spectre.Console's generated --help output as the single source of truth.
+if (args[0].Equals("help", StringComparison.OrdinalIgnoreCase))
+{
+    args = [.. args.Skip(1), "--help"];
+}
+
 var app = new CommandApp();
 app.Configure(config =>
 {
@@ -20,11 +33,23 @@ app.Configure(config =>
     config.PropagateExceptions();
 
     config.AddCommand<ListCommand>("list")
+        .WithAlias("ls")
         .WithDescription("List catalog assets, filterable by kind, group, and provider.")
         .WithExample("list", "skills", "--group", "backend");
 
+    config.AddCommand<FindCommand>("find")
+        .WithAlias("search")
+        .WithDescription("Search the approved catalog by id, name, description, kind, or group.")
+        .WithExample("find", "typescript", "--kind", "skills");
+
     config.AddCommand<GroupsCommand>("groups")
-        .WithDescription("List catalog groups.");
+        .WithDescription("List catalog groups.")
+        .WithExample("groups");
+
+    config.AddCommand<InitCommand>("init")
+        .WithDescription("Initialize a standalone or project-local asset catalog.")
+        .WithExample("init")
+        .WithExample("init", "--overlay");
 
     config.AddCommand<NewCommand>("new")
         .WithDescription("Scaffold a new local asset (manifest + content) ready for a PR.")
@@ -32,67 +57,80 @@ app.Configure(config =>
 
     config.AddCommand<ImportCommand>("import")
         .WithDescription("Scaffold an external asset pinned to an upstream commit or tag.")
-        .WithExample("import", "https://github.com/anthropics/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d");
+        .WithExample("import", "https://github.com/acme/skills/.../pdf@<commit-sha>");
 
     config.AddCommand<AddCommand>("add")
+        .WithAlias("install")
         .WithDescription("Install assets. With no arguments, pick interactively.")
         .WithExample("add")
         .WithExample("add", "grill-me", "secret-scan", "--claude");
 
     config.AddCommand<RemoveCommand>("remove")
         .WithAlias("uninstall")
-        .WithDescription("Remove installed assets, including their entries in shared provider configs.");
+        .WithDescription("Remove installed assets, including their entries in shared provider configs.")
+        .WithExample("remove", "grill-me", "--project");
 
     config.AddCommand<UpgradeCommand>("upgrade")
         .WithAlias("update")
-        .WithDescription("Upgrade installed assets to the catalog versions.");
+        .WithDescription("Upgrade installed assets to the catalog versions.")
+        .WithExample("upgrade", "--project");
 
     config.AddCommand<OutdatedCommand>("outdated")
-        .WithDescription("Show installed assets with newer catalog versions.");
+        .WithDescription("Show installed assets with newer catalog versions.")
+        .WithExample("outdated", "--project");
 
     config.AddCommand<PlanCommand>("plan")
-        .WithDescription("Dry-run of add: show what would be installed where.");
+        .WithDescription("Dry-run of add: show what would be installed where.")
+        .WithExample("plan", "skills", "--codex", "--project");
 
     config.AddCommand<StatusCommand>("status")
-        .WithDescription("Show installed assets and their state.");
+        .WithDescription("Show installed assets and their state.")
+        .WithExample("status", "--project");
 
     config.AddCommand<DiffCommand>("diff")
-        .WithDescription("Compare an installed asset against its lockfile checksum.");
+        .WithDescription("Compare an installed asset against its lockfile checksum.")
+        .WithExample("diff", "grill-me", "--project");
 
     config.AddCommand<PinCommand>("pin")
-        .WithDescription("Pin an installed asset so upgrades skip it.");
+        .WithDescription("Pin an installed asset so upgrades skip it.")
+        .WithExample("pin", "grill-me", "--project");
 
     config.AddCommand<UnpinCommand>("unpin")
-        .WithDescription("Unpin an installed asset.");
+        .WithDescription("Unpin an installed asset.")
+        .WithExample("unpin", "grill-me", "--project");
 
     config.AddCommand<DoctorCommand>("doctor")
-        .WithDescription("Show environment, detected providers, and configuration.");
+        .WithDescription("Show environment, detected providers, catalog, and configuration.")
+        .WithExample("doctor");
 
     config.AddBranch("catalog", catalog =>
     {
         catalog.SetDescription("Catalog maintenance (validate, lock, verify).");
         catalog.AddCommand<CatalogValidateCommand>("validate")
-            .WithDescription("Validate the catalog: manifests, references, checksums.");
+            .WithDescription("Validate the catalog: manifests, references, checksums.")
+            .WithExample("catalog", "validate");
         catalog.AddCommand<CatalogLockCommand>("lock")
-            .WithDescription("Generate catalog.lock.yaml with content checksums (run in CI).");
+            .WithDescription("Generate catalog.lock.yaml with content checksums (run in CI).")
+            .WithExample("catalog", "lock", "--check");
         catalog.AddCommand<CatalogVerifyExternalCommand>("verify-external")
-            .WithDescription("Fetch every external asset at its pinned ref and verify checksums.");
+            .WithDescription("Fetch every external asset at its pinned ref and verify checksums.")
+            .WithExample("catalog", "verify-external");
     });
 
     config.AddBranch("profile", profile =>
     {
         profile.SetDescription("Team profiles: list and apply.");
-        profile.AddCommand<ProfileListCommand>("list").WithDescription("List profiles.");
-        profile.AddCommand<ProfileApplyCommand>("apply").WithDescription("Install everything a profile selects.");
-        profile.AddCommand<ProfilePlanCommand>("plan").WithDescription("Dry-run of profile apply.");
+        profile.AddCommand<ProfileListCommand>("list").WithDescription("List profiles.").WithExample("profile", "list");
+        profile.AddCommand<ProfileApplyCommand>("apply").WithDescription("Install everything a profile selects.").WithExample("profile", "apply", "backend");
+        profile.AddCommand<ProfilePlanCommand>("plan").WithDescription("Dry-run of profile apply.").WithExample("profile", "plan", "backend");
     });
 
     config.AddBranch("source", source =>
     {
         source.SetDescription("Catalog source repositories.");
-        source.AddCommand<SourceAddCommand>("add").WithDescription("Register a catalog git repository.");
-        source.AddCommand<SourceListCommand>("list").WithDescription("List registered catalog sources.");
-        source.AddCommand<SourceSyncCommand>("sync").WithDescription("Clone or update all registered sources.");
+        source.AddCommand<SourceAddCommand>("add").WithDescription("Register a catalog git repository.").WithExample("source", "add", "org", "https://github.com/acme/ai-catalog.git");
+        source.AddCommand<SourceListCommand>("list").WithDescription("List registered catalog sources.").WithExample("source", "list");
+        source.AddCommand<SourceSyncCommand>("sync").WithDescription("Clone or update all registered sources.").WithExample("source", "sync");
     });
 });
 

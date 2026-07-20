@@ -121,7 +121,8 @@ public sealed class SourceManager
     /// 1. explicit path; 2. catalog.yaml in the working directory (the catalog repo itself);
     /// 3. the first registered source (auto-synced on first use);
     /// 4. the AGENTPACK_CATALOG_URL environment variable (auto-registered and synced),
-    ///    so organizations can bake the catalog in and developers never run 'source add'.
+    ///    so organizations can bake the catalog in and developers never run 'source add';
+    /// 5. .agentpack/catalog.yaml as a standalone project catalog when no base exists.
     /// </summary>
     public string ResolveCatalogPath(string? explicitPath = null)
     {
@@ -146,10 +147,16 @@ public sealed class SourceManager
 
         if (first is null)
         {
+            var projectCatalog = Path.Combine(_paths.WorkingDirectory, ".agentpack", "catalog.yaml");
+            if (File.Exists(projectCatalog)) return projectCatalog;
+        }
+
+        if (first is null)
+        {
             throw new AgentPackException(
                 "No catalog found.",
-                "Run from a catalog repo, register one with 'agentpack source add <name> <git-url>', " +
-                "or set AGENTPACK_CATALOG_URL to your catalog's git URL.");
+                "Run 'agentpack init --overlay' for this project, run from a catalog repo, register one with " +
+                "'agentpack source add <name> <git-url>', or set AGENTPACK_CATALOG_URL.");
         }
 
         var cached = Path.Combine(SourceCachePath(first), "catalog.yaml");

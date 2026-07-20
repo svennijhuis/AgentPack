@@ -10,7 +10,7 @@ public sealed class ListCommand : Command<ListCommand.Settings>
     public sealed class Settings : CommandSettings
     {
         [CommandArgument(0, "[kind]")]
-        [Description("Filter by kind (skills, hooks, mcp, tools, instructions, rules, prompts, templates) or 'all'.")]
+        [Description("Filter by kind (skills, hooks, mcp, tools, instructions, rules, prompts, templates, agents) or 'all'.")]
         public string? Kind { get; set; }
 
         [CommandOption("-g|--group <GROUP>")]
@@ -42,17 +42,31 @@ public sealed class ListCommand : Command<ListCommand.Settings>
 
         var assets = CommandHelpers.SelectAssets(loaded.Catalog, targets, settings.Groups, providerFilter.Count > 0 ? providerFilter : null);
 
+        var filtered = targets.Length > 0 || settings.Groups.Length > 0 || providerFilter.Count > 0;
+        RenderAssets(
+            assets,
+            filtered
+                ? "No assets match these filters. Run 'agentpack list' without filters to see everything."
+                : "The catalog is empty. Scaffold an asset with 'agentpack new' or add a source with 'agentpack source add'.",
+            "agentpack list <kind>");
+        return 0;
+    }
+
+    internal static void RenderAssets(IReadOnlyList<Asset> assets, string emptyMessage, string narrowCommand)
+    {
         // The common case is all-recommended, all-local: those columns then say nothing — drop them.
         var showStatus = assets.Any(x => x.Status != AssetStatus.Recommended);
         var showSource = assets.Any(x => x.Source is AssetSource.External);
-        var descriptionRoom = Math.Clamp(Spectre.Console.AnsiConsole.Profile.Width - 60, 24, 120);
+        var compact = Spectre.Console.AnsiConsole.Profile.Width < 100;
+        var descriptionRoom = Math.Clamp(Spectre.Console.AnsiConsole.Profile.Width - (compact ? 45 : 60), 24, 120);
 
-        var headers = new List<string> { "ID", "Kind", "Version", "Groups", "Providers" };
+        var headers = new List<string> { "ID", "Kind", "Version" };
+        if (!compact) headers.AddRange(["Groups", "Providers"]);
+        var statusColumn = showStatus ? headers.Count : -1;
         if (showStatus) headers.Add("Status");
         if (showSource) headers.Add("Source");
         headers.Add("Description");
 
-        var filtered = targets.Length > 0 || settings.Groups.Length > 0 || providerFilter.Count > 0;
         Output.Table(
             headers.ToArray(),
             assets.Select(asset =>
@@ -61,10 +75,13 @@ public sealed class ListCommand : Command<ListCommand.Settings>
                 {
                     asset.Id,
                     asset.Kind.Display(),
-                    asset.Version.ToString(),
-                    string.Join(",", asset.Groups),
-                    asset.Providers.Count == ProviderNames.All.Count ? "all" : string.Join(",", asset.Providers.Select(ProviderNames.Display))
+                    asset.Version.ToString()
                 };
+                if (!compact)
+                {
+                    row.Add(string.Join(",", asset.Groups));
+                    row.Add(asset.Providers.Count == ProviderNames.All.Count ? "all" : string.Join(",", asset.Providers.Select(ProviderNames.Display)));
+                }
                 if (showStatus)
                 {
                     row.Add(asset.Status switch
@@ -79,18 +96,80 @@ public sealed class ListCommand : Command<ListCommand.Settings>
                 row.Add(Output.Fit(asset.Description, descriptionRoom));
                 return row.ToArray();
             }),
-            emptyMessage: filtered
-                ? "No assets match these filters. Run 'agentpack list' without filters to see everything."
-                : "The catalog is empty. Scaffold an asset with 'agentpack new' or add a source with 'agentpack source add'.",
-            markupColumns: showStatus ? [5] : null);
+            emptyMessage: emptyMessage,
+            markupColumns: showStatus ? [statusColumn] : null,
+            noWrapColumns: showStatus ? [0, 1, 2, statusColumn] : [0, 1, 2]);
 
         if (assets.Count >= 10)
         {
-            Output.Info($"{assets.Count} assets — narrow with 'agentpack list <kind>', --group <name>, or --provider <name>.");
+            Output.Info($"{assets.Count} assets — narrow with '{narrowCommand}', --group <name>, or --provider <name>.");
+        }
+    }
+}
+
+public sealed class FindCommand : Command<FindCommand.Settings>
+{
+    public sealed class Settings : CommandSettings
+    {
+        [CommandArgument(0, "<query>")]
+        [Description("Words to match against approved asset metadata.")]
+        public string Query { get; set; } = "";
+
+        [CommandOption("-k|--kind <KIND>")]
+        [Description("Filter by asset kind.")]
+        public string? Kind { get; set; }
+
+        [CommandOption("-g|--group <GROUP>")]
+        [Description("Filter by group (repeatable or comma-separated).")]
+        public string[] Groups { get; set; } = [];
+
+        [CommandOption("-p|--provider <PROVIDER>")]
+        [Description("Filter by provider (repeatable or comma-separated).")]
+        public string[] Providers { get; set; } = [];
+    }
+
+    public override int Execute(CommandContext context, Settings settings)
+    {
+        var tokens = settings.Query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 0)
+        {
+            throw new AgentPackException("Search query cannot be empty.", "Run 'agentpack list' to browse the whole approved catalog.");
         }
 
-        return 0;
+        AssetKind? kind = null;
+        if (!string.IsNullOrWhiteSpace(settings.Kind)) kind = AssetKinds.Parse(settings.Kind);
+
+        var groups = settings.Groups
+            .SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var providers = settings.Providers
+            .SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Select(ProviderNames.Parse)
+            .ToHashSet();
+
+        var loaded = new CliSession().LoadCatalog();
+        var assets = loaded.Catalog.Assets
+            .Where(asset => kind is null || asset.Kind == kind)
+            .Where(asset => groups.Count == 0 || asset.Groups.Any(groups.Contains))
+            .Where(asset => providers.Count == 0 || asset.Providers.Any(providers.Contains))
+            .Where(asset => tokens.All(token => SearchText(asset).Contains(token, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(asset => asset.Kind)
+            .ThenBy(asset => asset.Id, StringComparer.Ordinal)
+            .ToList();
+
+        ListCommand.RenderAssets(
+            assets,
+            $"No approved assets match '{settings.Query}'. Run 'agentpack list' to browse the catalog.",
+            "agentpack find <query>");
+        return ExitCodes.Ok;
     }
+
+    private static string SearchText(Asset asset) => string.Join(' ',
+        asset.Id,
+        asset.Name,
+        asset.Description,
+        asset.Kind.Display(),
+        string.Join(' ', asset.Groups));
 }
 
 public sealed class GroupsCommand : Command
@@ -217,6 +296,29 @@ public sealed class DoctorCommand : Command
     {
         var session = new CliSession();
         var detected = ProviderRegistry.Detect(session.Paths.WorkingDirectory);
+        var rootCatalog = Path.Combine(session.Paths.WorkingDirectory, "catalog.yaml");
+        var overlayCatalog = Path.Combine(session.Paths.WorkingDirectory, ".agentpack", "catalog.yaml");
+        var config = session.Sources.LoadConfig();
+        var configuredSource = config.Sources.FirstOrDefault();
+        var environmentSource = Environment.GetEnvironmentVariable("AGENTPACK_CATALOG_URL");
+        var catalogMode = File.Exists(rootCatalog)
+            ? "standalone root catalog"
+            : configuredSource is not null
+                ? $"registered source ({configuredSource.Name})"
+                : !string.IsNullOrWhiteSpace(environmentSource)
+                    ? "environment source (AGENTPACK_CATALOG_URL)"
+                    : File.Exists(overlayCatalog)
+                        ? "standalone project catalog"
+                        : "unconfigured";
+        var catalogLocation = File.Exists(rootCatalog)
+            ? rootCatalog
+            : configuredSource is not null
+                ? configuredSource.Url
+                : !string.IsNullOrWhiteSpace(environmentSource)
+                    ? environmentSource
+                    : File.Exists(overlayCatalog)
+                        ? overlayCatalog
+                        : "(none)";
         Output.Table(
             ["Check", "Value"],
             new[]
@@ -226,9 +328,17 @@ public sealed class DoctorCommand : Command
                 ["Working directory", session.Paths.WorkingDirectory],
                 ["Git repository", CliSession.IsGitRepo(session.Paths.WorkingDirectory) ? "yes" : "no"],
                 ["Detected providers", detected.Count > 0 ? string.Join(", ", detected.Select(ProviderNames.Display)) : "(none)"],
-                ["Catalog sources", session.Sources.LoadConfig().Sources.Count.ToString()],
+                ["Catalog", catalogMode],
+                ["Catalog location", catalogLocation],
+                ["Project overlay", File.Exists(overlayCatalog) && !Path.GetFullPath(overlayCatalog).Equals(Path.GetFullPath(rootCatalog), StringComparison.OrdinalIgnoreCase) ? overlayCatalog : "(none)"],
+                ["Catalog sources", config.Sources.Count.ToString()],
                 ["Default scope", CliSession.IsGitRepo(session.Paths.WorkingDirectory) ? "project" : "user"]
             });
+        if (catalogMode == "unconfigured")
+        {
+            Output.Info("Next: run 'agentpack init --overlay' for this project or 'agentpack source add <name> <git-url>' for a shared catalog.");
+        }
+
         return 0;
     }
 }

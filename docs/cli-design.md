@@ -18,6 +18,8 @@
 ## Command surface
 
 ```text
+agentpack init [--overlay]
+agentpack find <query> [--kind k] [-g group] [-p provider]
 agentpack add [kind] [id...] [-g group] [--claude|--codex|--copilot|--cursor|-p name]
               [--user|--project] [--yes] [--force|--keep-local]
 agentpack plan ...                          # add, dry-run
@@ -30,6 +32,8 @@ agentpack catalog validate | lock [--check|--no-fetch] | verify-external
 agentpack source add|list|sync
 agentpack groups / doctor
 ```
+
+Running `agentpack` without arguments shows task-oriented onboarding. Generated exhaustive help remains available through `agentpack --help`, `agentpack help <command>`, and nested forms such as `agentpack help profile apply`.
 
 Defaults chosen for the common case:
 

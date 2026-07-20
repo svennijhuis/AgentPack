@@ -6,6 +6,18 @@ Fixes from a follow-up production-readiness review.
 
 ### Added
 
+- **Task-oriented CLI onboarding and approved-catalog discovery.** Running `agentpack`
+  now shows personal, team, and shared-catalog workflows; `agentpack help <command>`
+  supports familiar nested help; and `agentpack find <query>` searches approved asset
+  metadata with kind, group, and provider filters. Familiar `install`, `ls`, and
+  `search` aliases complement the existing `uninstall` and `update` aliases.
+- **First-class personal and team catalogs.** `agentpack init` creates a standalone
+  catalog, `agentpack init --overlay` creates a project catalog, and
+  `agentpack new ... --overlay` scaffolds directly under `.agentpack/assets/`.
+  A project catalog works by itself when no central source is configured and becomes
+  a higher-precedence overlay when one is present.
+- A task-first README, exhaustive CLI reference, and updated authoring/overlay guides
+  document the individual, service-team, and company approval workflows.
 - **New `agents` asset kind** — custom agents / subagents install to all four
   providers: `.claude/agents/<id>.md`, `.cursor/agents/<id>.md`,
   `.github/agents/<id>.agent.md` (user scope `~/.copilot/agents/`, the

@@ -9,6 +9,7 @@
 ## Add a local asset
 
 ```bash
+agentpack init                         # once, in a dedicated catalog repository
 agentpack new skills grill-me --group review
 ```
 
@@ -121,4 +122,11 @@ Hooks execute code on developer machines and any external source change pulls th
 
 ## Team overlays
 
-A consuming repo can add team-local assets without touching the org catalog: put `.agentpack/catalog.yaml` and `.agentpack/assets/<kind>/<id>/` in the repo. Overlay entries with the same id override the org catalog for that repo. See [team-overlays.md](team-overlays.md).
+A consuming repo can add team-local assets without touching the org catalog:
+
+```bash
+agentpack init --overlay               # optional: `new --overlay` also creates it
+agentpack new skills service-setup --overlay
+```
+
+This writes `.agentpack/catalog.yaml` and `.agentpack/assets/<kind>/<id>/` directly. Overlay entries with the same id override the org catalog for that repo. Without a configured base catalog, `.agentpack/catalog.yaml` works as a standalone personal-project catalog. See [team-overlays.md](team-overlays.md).

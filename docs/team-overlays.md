@@ -2,7 +2,14 @@
 
 Different teams can have different conventions without forking the company catalog.
 
-Add repo-local overlays in:
+Create a repo-local catalog and asset directly:
+
+```bash
+agentpack init --overlay
+agentpack new skills platform-infra-review --overlay --group platform
+```
+
+`agentpack new --overlay` creates the minimal catalog automatically when it is missing. The resulting layout is:
 
 ```text
 .agentpack/catalog.yaml
@@ -23,12 +30,7 @@ Good uses:
 - infra conventions
 - local profiles
 
-Example:
-
-```bash
-agentpack new prompts platform-infra-review --group platform
-# then move the generated assets/ folder under .agentpack/assets/
-```
+Example manifest:
 
 ```yaml
 # .agentpack/assets/prompts/platform-infra-review/agentpack.yaml

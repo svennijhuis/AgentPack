@@ -7,8 +7,9 @@ public static class Suggestions
 {
     private static readonly string[] CommandNames =
     [
-        "list", "groups", "new", "import", "add", "remove", "uninstall", "upgrade", "update",
-        "outdated", "plan", "status", "diff", "pin", "unpin", "doctor", "catalog", "profile", "source"
+        "help", "init", "list", "ls", "find", "search", "groups", "new", "import", "add", "install",
+        "remove", "uninstall", "upgrade", "update", "outdated", "plan", "status", "diff", "pin", "unpin",
+        "doctor", "catalog", "profile", "source"
     ];
 
     public static string? ForParseError(string message)

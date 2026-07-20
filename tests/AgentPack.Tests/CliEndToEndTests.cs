@@ -18,6 +18,130 @@ public class CliEndToEndTests
     }
 
     [Fact]
+    public void NoArgumentsShowsTaskOrientedGettingStartedScreen()
+    {
+        using var temp = new TempDir();
+        var result = RunCli(temp);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Use an existing team catalog", result.Output);
+        Assert.Contains("agentpack init --overlay", result.Output);
+        Assert.Contains("agentpack find <query>", result.Output);
+        Assert.DoesNotContain("USAGE:", result.Output);
+    }
+
+    [Fact]
+    public void HelpCommandSupportsRootCommandsAndNestedCommands()
+    {
+        using var temp = new TempDir();
+
+        var root = RunCli(temp, "help");
+        Assert.Equal(0, root.ExitCode);
+        Assert.Contains("COMMANDS:", root.Output);
+
+        var add = RunCli(temp, "help", "add");
+        Assert.Equal(0, add.ExitCode);
+        Assert.Contains("agentpack add", add.Output);
+        Assert.Contains("--overlay", RunCli(temp, "help", "new").Output);
+
+        var nested = RunCli(temp, "help", "profile", "apply");
+        Assert.Equal(0, nested.ExitCode);
+        Assert.Contains("agentpack profile apply", nested.Output);
+    }
+
+    [Fact]
+    public void InitCreatesCatalogsAndNeverOverwritesThem()
+    {
+        using var rootTemp = new TempDir();
+        var root = RunCli(rootTemp, "init");
+        Assert.Equal(0, root.ExitCode);
+        var rootCatalog = Path.Combine(WorkDir(rootTemp), "catalog.yaml");
+        Assert.True(File.Exists(rootCatalog));
+        var original = File.ReadAllText(rootCatalog);
+        var repeated = RunCli(rootTemp, "init");
+        Assert.NotEqual(0, repeated.ExitCode);
+        Assert.Equal(original, File.ReadAllText(rootCatalog));
+
+        using var overlayTemp = new TempDir();
+        var overlay = RunCli(overlayTemp, "init", "--overlay");
+        Assert.Equal(0, overlay.ExitCode);
+        Assert.True(File.Exists(Path.Combine(WorkDir(overlayTemp), ".agentpack", "catalog.yaml")));
+        Assert.False(File.Exists(Path.Combine(WorkDir(overlayTemp), "catalog.yaml")));
+    }
+
+    [Fact]
+    public void NewOverlayCreatesStandaloneProjectCatalogAndAsset()
+    {
+        using var temp = new TempDir();
+        var create = RunCli(temp, "new", "skills", "service-setup", "--overlay");
+        Assert.Equal(0, create.ExitCode);
+        Assert.Contains(".agentpack/catalog.yaml", create.Output);
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".agentpack", "catalog.yaml")));
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".agentpack", "assets", "skills", "service-setup", "content", "SKILL.md")));
+
+        var list = RunCli(temp, "list");
+        Assert.Equal(0, list.ExitCode);
+        Assert.Contains("service-setup", list.Output);
+
+        var validate = RunCli(temp, "catalog", "validate", "--no-checksums");
+        Assert.Equal(0, validate.ExitCode);
+    }
+
+    [Fact]
+    public void NewOverlayScaffoldsEveryInstallableAssetKindIntoAValidCatalog()
+    {
+        using var temp = new TempDir();
+        // Tools and templates remain explicit unsupported kinds in the provider matrix;
+        // scaffolding them is allowed for forward compatibility, but validation correctly
+        // rejects catalogs that claim they can currently be installed.
+        string[] kinds = ["skills", "hooks", "mcp", "instructions", "rules", "prompts", "agents"];
+        foreach (var kind in kinds)
+        {
+            var create = RunCli(temp, "new", kind, $"sample-{kind}", "--overlay");
+            Assert.Equal(0, create.ExitCode);
+            Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".agentpack", "assets", kind, $"sample-{kind}", "agentpack.yaml")));
+        }
+
+        var validate = RunCli(temp, "catalog", "validate", "--no-checksums");
+        Assert.Equal(0, validate.ExitCode);
+    }
+
+    [Fact]
+    public void FindSearchesOnlyApprovedEffectiveCatalogMetadata()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "service-setup", description: "Bootstrap TypeScript backend services.", groups: "[backend, platform]");
+        WriteSkill(temp, "frontend-review", description: "Review React user interfaces.", groups: "[review]");
+
+        var byWords = RunCli(temp, "find", "typescript service");
+        Assert.Equal(0, byWords.ExitCode);
+        Assert.Contains("service-setup", byWords.Output);
+        Assert.DoesNotContain("frontend-review", byWords.Output);
+
+        var byFilter = RunCli(temp, "search", "review", "--kind", "skills", "--group", "review", "--provider", "codex");
+        Assert.Equal(0, byFilter.ExitCode);
+        Assert.Contains("frontend-review", byFilter.Output);
+        Assert.DoesNotContain("service-setup", byFilter.Output);
+
+        var none = RunCli(temp, "find", "not-in-approved-catalog");
+        Assert.Equal(0, none.ExitCode);
+        Assert.Contains("No approved assets match", none.Output);
+    }
+
+    [Fact]
+    public void FamiliarAliasesRemainEquivalent()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "demo-skill");
+
+        Assert.Contains("demo-skill", RunCli(temp, "ls").Output);
+        var install = RunCli(temp, "install", "demo-skill", "--claude", "--project", "--yes");
+        Assert.Equal(0, install.ExitCode);
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "demo-skill", "SKILL.md")));
+    }
+
+    [Fact]
     public void VersionFlagPrintsTheToolVersion()
     {
         using var temp = new TempDir();
@@ -340,13 +464,18 @@ public class CliEndToEndTests
             """);
     }
 
-    private static void WriteSkill(TempDir temp, string id, string? extraYaml = null)
+    private static void WriteSkill(
+        TempDir temp,
+        string id,
+        string? extraYaml = null,
+        string description = "Test skill.",
+        string groups = "[review]")
     {
         var dir = Path.Combine(WorkDir(temp), "assets", "skills", id);
         Directory.CreateDirectory(Path.Combine(dir, "content"));
         File.WriteAllText(Path.Combine(dir, "content", "SKILL.md"), $"# {id}\n");
         File.WriteAllText(Path.Combine(dir, "agentpack.yaml"),
-            $"name: {id}\nversion: 1.0.0\ndescription: Test skill.\ngroups: [review]\n{extraYaml}\n");
+            $"name: {id}\nversion: 1.0.0\ndescription: {description}\ngroups: {groups}\n{extraYaml}\n");
     }
 
     private static (int ExitCode, string Output, string Error) RunCli(TempDir temp, params string[] args)

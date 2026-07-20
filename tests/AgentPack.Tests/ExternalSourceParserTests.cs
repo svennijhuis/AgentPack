@@ -18,6 +18,20 @@ public class ExternalSourceParserTests
     }
 
     [Fact]
+    public void DeeplyNestedTreeUrlKeepsTheFullSubpath()
+    {
+        // Catalog-style repos nest skills (e.g. mattpocock/skills:
+        // skills/engineering/code-review); the whole subpath must survive.
+        var source = new AssetSource.External(
+            "https://github.com/mattpocock/skills/tree/main/skills/engineering/code-review", Sha, null, null, null);
+        var resolved = ExternalSourceParser.Resolve(source);
+
+        Assert.Equal("https://github.com/mattpocock/skills.git", resolved.Repo);
+        Assert.Equal(Sha, resolved.Ref);
+        Assert.Equal("skills/engineering/code-review", resolved.Path);
+    }
+
+    [Fact]
     public void PlainGitHubRepoUrlResolves()
     {
         var source = new AssetSource.External("https://github.com/example/ai-skills", "v1.2.0", "skills/x", null, null);

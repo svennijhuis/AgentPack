@@ -9,7 +9,21 @@ public enum InstallMode
     MergeMcp,
 
     /// <summary>Copy hook content and register it in the provider's hook config file.</summary>
-    MergeHook
+    MergeHook,
+
+    /// <summary>Translate a single content file into the provider's own format and write it to the target path.</summary>
+    ConvertFile
+}
+
+public static class InstallModes
+{
+    /// <summary>
+    /// Modes whose target file is wholly owned by agentpack: drift is a whole-file
+    /// checksum, no fragment is recorded, and removal deletes the file. Merge modes
+    /// share the target file with user content and track only their fragment.
+    /// </summary>
+    public static bool OwnsWholeTarget(this InstallMode mode) =>
+        mode is InstallMode.CopyTree or InstallMode.ConvertFile;
 }
 
 public sealed record InstallTarget(

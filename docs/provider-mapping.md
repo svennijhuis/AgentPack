@@ -15,7 +15,8 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 | mcp | `.mcp.json` | `~/.claude.json` | JSON merge under `mcpServers` |
 | instructions | `CLAUDE.md` | `~/.claude/CLAUDE.md` | single file |
 | prompts | `.claude/commands/<id>.md` | `~/.claude/commands/<id>.md` | single file (slash command) |
-| rules | — use instructions | — | unsupported |
+| agents | `.claude/agents/<id>.md` | `~/.claude/agents/<id>.md` | single file (markdown + frontmatter subagent); see [subagents docs](https://code.claude.com/docs/en/sub-agents) |
+| rules | `.claude/rules/<id>.md` | `~/.claude/rules/<id>.md` | converted from the catalog `.mdc`: `globs` → `paths` list, `alwaysApply: true` → no `paths` (always loaded) |
 
 ## Codex
 
@@ -26,6 +27,7 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 | hooks | `.codex/hooks.json` + `.codex/hooks/<id>/` | `~/.codex/hooks.json` + `~/.codex/hooks/<id>/` | JSON merge — Claude-style structure (PascalCase events, `matcher`, `timeout`); see [Codex hooks docs](https://developers.openai.com/codex/hooks) |
 | instructions | `AGENTS.md` | `~/.codex/AGENTS.md` | single file |
 | prompts | `.codex/prompts/<id>.md` | `~/.codex/prompts/<id>.md` | single file (custom prompt) |
+| agents | `.codex/agents/<id>.toml` | `~/.codex/agents/<id>.toml` | **generated TOML** — the agent markdown becomes `name`, `description`, `developer_instructions` (body), optional `model`; see [Codex subagents docs](https://developers.openai.com/codex/subagents) |
 | rules | — use instructions | — | unsupported |
 
 ## GitHub Copilot
@@ -37,6 +39,7 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 | hooks | `.github/hooks/<id>.json` + `.github/hooks/<id>/` | `~/.copilot/hooks/<id>.json` + `~/.copilot/hooks/<id>/` | one JSON file per hook (`version: 1`, camelCase events, `bash`/`powershell` commands, `timeoutSec`); a `hook.ps1` twin next to `hook.sh` is registered automatically for Windows; see [Copilot CLI hooks docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks) |
 | instructions | `.github/instructions/<id>.instructions.md` | — managed in the editor | single file |
 | prompts | `.github/prompts/<id>.prompt.md` | — managed in the editor | single file |
+| agents | `.github/agents/<id>.agent.md` | `~/.copilot/agents/<id>.agent.md` | single file — the `.agent.md` suffix is **required** in both scopes (plain `.md` is silently ignored); user-level wins on a name collision; see [custom agents docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli) |
 | rules | — use instructions | — | unsupported |
 
 ## Cursor
@@ -49,6 +52,7 @@ Project-scope paths are relative to the repo root. User-scope paths are relative
 | mcp | `.cursor/mcp.json` | `~/.cursor/mcp.json` | JSON merge under `mcpServers` |
 | instructions | `AGENTS.md` | — managed in the app (User Rules) | single file |
 | prompts | `.cursor/commands/<id>.md` | `~/.cursor/commands/<id>.md` | single file |
+| agents | `.cursor/agents/<id>.md` | `~/.cursor/agents/<id>.md` | single file — Cursor discovers agents only at the folder root, never in subdirectories; see [subagents docs](https://cursor.com/docs/subagents) |
 
 ## Hook trigger mapping
 
@@ -65,7 +69,22 @@ Catalog triggers are normalized (`preToolUse`, `postToolUse`, `stop`, `sessionSt
 
 The `tool` matcher is written only for the tool events (`preToolUse`/`postToolUse`, defaulting to `Bash` when unset). Other triggers get no matcher unless the asset sets one explicitly — Claude Code matches `SessionStart` groups on the session source, never a tool name, so a defaulted tool matcher there would keep the hook from firing.
 
-After installing a **Copilot repo-level hook**, the CLI reminds you to commit `.github/hooks/` — Copilot CLI picks the file up immediately, but the Copilot cloud coding agent reads hooks only from the default branch.
+After installing a **Copilot repo-level hook**, the CLI reminds you to commit `.github/hooks/` — Copilot CLI picks the file up immediately, but the Copilot cloud coding agent reads hooks only from the default branch. The same applies to repo-level custom agents in `.github/agents/`.
+
+## Agents — one canonical file, two dialects
+
+An agent asset is a single markdown file with frontmatter (`name`, `description`, optional `model`) and the agent's instructions as the body — the shared subset that Claude Code, Cursor, and Copilot all read natively (unknown frontmatter fields are ignored by products that don't use them). Copilot only differs in the required `.agent.md` filename. Codex is the exception: its agents are TOML, so the install converts the markdown (frontmatter `name`/`description`/`model` plus the body as `developer_instructions`) instead of copying it. Both converted targets (`codex agents`, `claude rules`) are whole files owned by agentpack — drift detection, backups, and removal work exactly like any other single-file install.
+
+## Considered and deliberately not mapped
+
+These provider features were audited and intentionally left out, so their absence is a decision, not an oversight:
+
+- **Claude Code plugins / marketplaces** — a competing distribution mechanism; agentpack is the distribution layer.
+- **Claude Code output styles** — deprecated upstream.
+- **Claude Code `settings.json` permission policies** — a possible future "policy" kind; needs its own merge semantics.
+- **Copilot `.github/chatmodes/*.chatmode.md`** — superseded by `.github/agents/*.agent.md` custom agents.
+- **Generating `agents/openai.yaml` inside skills** — Codex's optional per-skill extras (desktop-app UI metadata, invocation policy, MCP tool deps). Skills that ship one keep it byte-for-byte (skills install as whole trees); agentpack never generates one, since `SKILL.md` alone is sufficient everywhere and invented invocation policy would change unreviewed behavior.
+- **`copilot-setup-steps.yml`, `.cursor/environment.json`, ignore files (`.cursorignore`, …)** — repo-specific one-offs, not shareable catalog assets.
 
 ## MCP environment variables — per-target syntax
 

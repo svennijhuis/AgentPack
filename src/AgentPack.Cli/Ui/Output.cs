@@ -97,7 +97,7 @@ public static class Output
                 {
                     var action = item.State switch
                     {
-                        InstallState.Available => item.Target.Mode == InstallMode.CopyTree ? "[green]install[/]" : "[green]merge into[/]",
+                        InstallState.Available => item.Target.Mode.OwnsWholeTarget() ? "[green]install[/]" : "[green]merge into[/]",
                         InstallState.UpdateAvailable => "[blue]update[/]",
                         InstallState.Installed => "[grey]up to date[/]",
                         InstallState.Pinned => "[grey]pinned (skip)[/]",

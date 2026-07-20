@@ -638,6 +638,148 @@ public class MergerGoldenTests
         Assert.Contains("${env:TOKEN}", File.ReadAllText(targetPath));
     }
 
+    [Fact]
+    public void ClaudeRuleGoldenTranslatesGlobsToPaths()
+    {
+        var asset = TestData.Asset(AssetKind.Rules, "ts-style");
+        var target = new InstallTarget(ProviderName.Claude, AssetKind.Rules, Path.Combine(".claude", "rules", "ts-style.md"), InstallMode.ConvertFile, IsFileTarget: true);
+        var output = FileConverter.Convert(asset, target, """
+            ---
+            description: TypeScript style rules.
+            globs: "*.ts,src/**/*.tsx"
+            alwaysApply: false
+            ---
+
+            # TypeScript style
+
+            Prefer explicit return types.
+            """);
+
+        Assert.Equal(Normalize("""
+            ---
+            description: TypeScript style rules.
+            paths:
+              - "*.ts"
+              - src/**/*.tsx
+            ---
+
+            # TypeScript style
+
+            Prefer explicit return types.
+            """), Normalize(output));
+    }
+
+    [Fact]
+    public void ClaudeRuleGoldenAlwaysApplyDropsPathScoping()
+    {
+        // alwaysApply: true means "load unconditionally" — for Claude that is a
+        // rule without paths frontmatter, never a rule scoped to the old globs.
+        var asset = TestData.Asset(AssetKind.Rules, "commit-style");
+        var target = new InstallTarget(ProviderName.Claude, AssetKind.Rules, Path.Combine(".claude", "rules", "commit-style.md"), InstallMode.ConvertFile, IsFileTarget: true);
+        var output = FileConverter.Convert(asset, target, """
+            ---
+            description: Commit message rules.
+            globs: ["*.md"]
+            alwaysApply: true
+            ---
+
+            Use imperative commit subjects.
+            """);
+
+        Assert.Equal(Normalize("""
+            ---
+            description: Commit message rules.
+            ---
+
+            Use imperative commit subjects.
+            """), Normalize(output));
+        Assert.DoesNotContain("paths:", output);
+        Assert.DoesNotContain("alwaysApply", output);
+    }
+
+    [Fact]
+    public void ClaudeRuleGoldenWithoutFrontmatterIsBodyOnly()
+    {
+        var asset = TestData.Asset(AssetKind.Rules, "plain");
+        var target = new InstallTarget(ProviderName.Claude, AssetKind.Rules, Path.Combine(".claude", "rules", "plain.md"), InstallMode.ConvertFile, IsFileTarget: true);
+        var output = FileConverter.Convert(asset, target, "Always run the linter before committing.\n");
+
+        Assert.Equal("Always run the linter before committing.\n", output);
+    }
+
+    [Fact]
+    public void CodexAgentGoldenTranslatesMarkdownToToml()
+    {
+        var asset = TestData.Asset(AssetKind.Agents, "code-reviewer");
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Agents, Path.Combine(".codex", "agents", "code-reviewer.toml"), InstallMode.ConvertFile, IsFileTarget: true);
+        var output = FileConverter.Convert(asset, target, """
+            ---
+            name: code-reviewer
+            description: Reviews diffs for correctness bugs.
+            model: gpt-5.2-codex
+            ---
+
+            You are a code reviewer. Report only verified findings.
+            """);
+
+        Assert.Equal(Normalize(""""
+            name = "code-reviewer"
+            description = "Reviews diffs for correctness bugs."
+            model = "gpt-5.2-codex"
+            developer_instructions = """
+            You are a code reviewer. Report only verified findings.
+            """
+            """"), Normalize(output));
+    }
+
+    [Fact]
+    public void CodexAgentGoldenFallsBackToManifestMetadata()
+    {
+        // No frontmatter at all: identity comes from the asset manifest so the
+        // required TOML fields are always present.
+        var asset = TestData.Asset(AssetKind.Agents, "grill-me");
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Agents, Path.Combine(".codex", "agents", "grill-me.toml"), InstallMode.ConvertFile, IsFileTarget: true);
+        var output = FileConverter.Convert(asset, target, "Challenge every plan with critical questions.\n");
+
+        Assert.StartsWith("name = \"grill-me\"", output);
+        Assert.Contains("description = ", output);
+        Assert.Contains("Challenge every plan with critical questions.", output);
+    }
+
+    [Fact]
+    public void CodexAgentGoldenEscapesTomlDelimiters()
+    {
+        var asset = TestData.Asset(AssetKind.Agents, "tricky");
+        var target = new InstallTarget(ProviderName.Codex, AssetKind.Agents, Path.Combine(".codex", "agents", "tricky.toml"), InstallMode.ConvertFile, IsFileTarget: true);
+        var output = FileConverter.Convert(asset, target, "Use \\n literally and never emit \"\"\" unescaped.\n");
+
+        Assert.Contains("\\\\n literally", output);
+        Assert.DoesNotContain("never emit \"\"\" unescaped", output);
+    }
+
+    [Fact]
+    public void ConvertFileInstallWritesBackupAndRoundTrips()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Rules, "ts-style",
+            files: new Dictionary<string, string>
+            {
+                ["ts-style.mdc"] = "---\ndescription: TS rules.\nglobs: \"*.ts\"\n---\n\nRule body.\n"
+            });
+        var sourcePath = Path.Combine(temp.Path, "assets", "rules", "ts-style", "content", "ts-style.mdc");
+        var targetPath = Path.Combine(temp.Path, ".claude", "rules", "ts-style.md");
+        var target = new InstallTarget(ProviderName.Claude, AssetKind.Rules, Path.Combine(".claude", "rules", "ts-style.md"), InstallMode.ConvertFile, IsFileTarget: true);
+
+        var first = FileConverter.Apply(asset, sourcePath, target, targetPath, _ => { });
+        Assert.Equal(ContentHash.Compute(targetPath), first.Checksum);
+
+        // Re-applying over our own output must produce identical content (idempotent).
+        var backups = new List<string>();
+        var second = FileConverter.Apply(asset, sourcePath, target, targetPath, backups.Add);
+        Assert.Equal(first.Checksum, second.Checksum);
+        Assert.Equal([targetPath], backups);
+    }
+
     private static string MergeMcp(ProviderName provider, InstallScope scope, string relativeTarget)
     {
         using var temp = new TempDir();

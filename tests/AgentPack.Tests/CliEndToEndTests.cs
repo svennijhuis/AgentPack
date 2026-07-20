@@ -90,6 +90,93 @@ public class CliEndToEndTests
     }
 
     [Fact]
+    public void SkillExtrasLikeOpenaiYamlSurviveInstallToEveryProvider()
+    {
+        // Skills may ship optional per-tool extras (e.g. Codex's agents/openai.yaml
+        // with desktop-app UI metadata and invocation policy). agentpack copies the
+        // skill tree byte-for-byte — it never strips or generates these files.
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "code-review");
+        var extrasDir = Path.Combine(WorkDir(temp), "assets", "skills", "code-review", "content", "agents");
+        Directory.CreateDirectory(extrasDir);
+        File.WriteAllText(Path.Combine(extrasDir, "openai.yaml"), "display_name: Code Review\ninterface:\n  icon: magnifying-glass\n");
+
+        var add = RunCli(temp, "add", "code-review", "--claude", "--cursor", "--copilot", "--codex", "--project", "--yes");
+        Assert.Equal(0, add.ExitCode);
+        string[] skillRoots =
+        [
+            Path.Combine(".claude", "skills", "code-review"),
+            Path.Combine(".agents", "skills", "code-review"),
+            Path.Combine(".github", "skills", "code-review"),
+            Path.Combine(".cursor", "skills", "code-review")
+        ];
+        foreach (var root in skillRoots)
+        {
+            Assert.True(File.Exists(Path.Combine(WorkDir(temp), root, "SKILL.md")), $"SKILL.md missing under {root}");
+            Assert.True(File.Exists(Path.Combine(WorkDir(temp), root, "agents", "openai.yaml")), $"agents/openai.yaml missing under {root}");
+        }
+
+        var remove = RunCli(temp, "remove", "code-review", "--project", "--yes");
+        Assert.Equal(0, remove.ExitCode);
+        foreach (var root in skillRoots)
+        {
+            Assert.False(Directory.Exists(Path.Combine(WorkDir(temp), root)), $"{root} should be removed");
+        }
+    }
+
+    [Fact]
+    public void NewAgentThenAddInstallsEveryProviderFormat()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+
+        var scaffold = RunCli(temp, "new", "agents", "code-reviewer", "--group", "review");
+        Assert.Equal(0, scaffold.ExitCode);
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), "assets", "agents", "code-reviewer", "content", "AGENT.md")));
+
+        var add = RunCli(temp, "add", "code-reviewer", "--claude", "--cursor", "--copilot", "--codex", "--project", "--yes");
+        Assert.Equal(0, add.ExitCode);
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "agents", "code-reviewer.md")));
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".cursor", "agents", "code-reviewer.md")));
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".github", "agents", "code-reviewer.agent.md")));
+
+        var codexToml = File.ReadAllText(Path.Combine(WorkDir(temp), ".codex", "agents", "code-reviewer.toml"));
+        Assert.Contains("name = \"code-reviewer\"", codexToml);
+        Assert.Contains("developer_instructions = \"\"\"", codexToml);
+    }
+
+    [Fact]
+    public void AddRuleInstallsCursorMdcAndClaudeTranslation()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        var dir = Path.Combine(WorkDir(temp), "assets", "rules", "ts-style");
+        Directory.CreateDirectory(Path.Combine(dir, "content"));
+        File.WriteAllText(Path.Combine(dir, "content", "ts-style.mdc"),
+            "---\ndescription: TS rules.\nglobs: \"*.ts\"\n---\n\nPrefer explicit return types.\n");
+        File.WriteAllText(Path.Combine(dir, "agentpack.yaml"),
+            "name: TS Style\nversion: 1.0.0\ndescription: Test rule.\ngroups: [review]\n");
+
+        var add = RunCli(temp, "add", "ts-style", "--claude", "--cursor", "--project", "--yes");
+        Assert.Equal(0, add.ExitCode);
+        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".cursor", "rules", "ts-style.mdc")));
+
+        var claudeRule = File.ReadAllText(Path.Combine(WorkDir(temp), ".claude", "rules", "ts-style.md"));
+        Assert.Contains("paths:", claudeRule);
+        Assert.Contains("\"*.ts\"", claudeRule);
+        Assert.DoesNotContain("globs", claudeRule);
+
+        // Re-adding is a no-op, and remove deletes both provider files.
+        var again = RunCli(temp, "add", "ts-style", "--claude", "--cursor", "--project", "--yes");
+        Assert.Equal(0, again.ExitCode);
+        var remove = RunCli(temp, "remove", "ts-style", "--project", "--yes");
+        Assert.Equal(0, remove.ExitCode);
+        Assert.False(File.Exists(Path.Combine(WorkDir(temp), ".claude", "rules", "ts-style.md")));
+        Assert.False(File.Exists(Path.Combine(WorkDir(temp), ".cursor", "rules", "ts-style.mdc")));
+    }
+
+    [Fact]
     public void AddUnknownAssetSuggestsNearest()
     {
         using var temp = new TempDir();

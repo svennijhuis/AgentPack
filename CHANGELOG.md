@@ -4,6 +4,22 @@
 
 Fixes from a follow-up production-readiness review.
 
+### Added
+
+- **New `agents` asset kind** — custom agents / subagents install to all four
+  providers: `.claude/agents/<id>.md`, `.cursor/agents/<id>.md`,
+  `.github/agents/<id>.agent.md` (user scope `~/.copilot/agents/`, the
+  `.agent.md` suffix is required), and `.codex/agents/<id>.toml` (generated
+  from the agent markdown — `name`, `description`, `developer_instructions`,
+  optional `model`). `agentpack new agents <id>` scaffolds the content file.
+- **Claude Code rules support** — rules assets now install to
+  `.claude/rules/<id>.md` in addition to `.cursor/rules/<id>.mdc`. The `.mdc`
+  frontmatter is translated (`globs` → `paths`; `alwaysApply: true` drops the
+  path scoping so the rule always loads).
+- New `ConvertFile` install mode backing both translations: converted files are
+  whole-file targets with the same drift detection, backups, and removal as any
+  single-file install.
+
 ### Fixed
 
 - **CLI printed nothing in some non-TTY environments.** Hosts that report a

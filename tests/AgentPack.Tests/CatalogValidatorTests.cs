@@ -131,7 +131,7 @@ public class CatalogValidatorTests
         // Rules limited to providers without rules files: nothing can install it.
         var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Rules, "nowhere",
             files: new Dictionary<string, string> { ["nowhere.mdc"] = "rule\n" });
-        asset = asset with { Providers = [ProviderName.Codex, ProviderName.Copilot, ProviderName.Claude] };
+        asset = asset with { Providers = [ProviderName.Codex, ProviderName.Copilot] };
 
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset));
         Assert.Contains(report.Issues, x => x.Code == "asset.provider.none" && x.Severity == IssueSeverity.Error);

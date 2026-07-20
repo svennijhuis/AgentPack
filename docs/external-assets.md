@@ -40,6 +40,18 @@ Supported URL shapes:
 
 Private repos work through your normal git credentials (credential helper / SSH) — agentpack shells out to `git`.
 
+The subpath can be as deep as the repo nests it — catalog-style repos often organize skills by topic:
+
+```bash
+agentpack import https://github.com/mattpocock/skills/tree/main/skills/engineering/code-review@<commit-sha>
+```
+
+The asset id defaults to the last path segment (`code-review`); override with `--id`.
+
+### Per-tool extras inside a skill (`agents/openai.yaml`, …)
+
+Upstream skills may ship optional tool-specific files next to `SKILL.md` — for example Codex's `agents/openai.yaml` (ChatGPT desktop-app display name/icon, invocation policy, MCP tool dependencies). These are **not required**: every CLI discovers a skill from `SKILL.md` alone. agentpack copies the skill folder byte-for-byte, so such extras are preserved exactly as reviewed — and it never generates them, because inventing invocation policy or tool dependencies would change behavior the reviewer didn't approve.
+
 ## How installs work
 
 1. Clone/fetch into the content-addressed cache `~/.agentpack/cache/external/<key>/`.

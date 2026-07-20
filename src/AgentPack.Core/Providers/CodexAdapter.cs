@@ -30,6 +30,9 @@ public sealed class CodexAdapter : IProviderAdapter
 
             AssetKind.Hooks => Supported(Name, asset, Path.Combine(".codex", "hooks.json"), InstallMode.MergeHook),
 
+            // Codex agents are TOML files; the agent markdown is translated on install.
+            AssetKind.Agents => Supported(Name, asset, Path.Combine(".codex", "agents", asset.Id + ".toml"), InstallMode.ConvertFile, isFileTarget: true),
+
             AssetKind.Rules => Unsupported("Codex has no rules files — use an instructions asset (AGENTS.md) instead."),
             AssetKind.Tools => Unsupported("Codex has no generic tools directory."),
             AssetKind.Templates => Unsupported("Codex has no templates directory."),

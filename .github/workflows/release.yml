@@ -29,6 +29,7 @@ jobs:
     needs: test
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +63,19 @@ jobs:
             echo "::error::NUGET_API_KEY is not set, so this release would never reach the NuGet feed. Add the secret, or set the SKIP_NUGET_PUBLISH repository variable to 'true' for a binaries-only release."
             exit 1
           fi
-          dotnet nuget push artifacts/*.nupkg --source "$NUGET_FEED_URL" --api-key "$NUGET_API_KEY"
+          dotnet nuget push artifacts/*.nupkg --source "$NUGET_FEED_URL" --api-key "$NUGET_API_KEY" --skip-duplicate
+
+      - name: Push to GitHub Packages
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dotnet nuget add source \
+            --username "${{ github.actor }}" \
+            --password "$GITHUB_PACKAGES_TOKEN" \
+            --store-password-in-clear-text \
+            --name github \
+            "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          dotnet nuget push artifacts/*.nupkg --source github --skip-duplicate
 
       - name: Publish self-contained binaries
         run: |

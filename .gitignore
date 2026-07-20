@@ -1,6 +1,7 @@
 bin/
 obj/
 outputs/
+artifacts/
 *.user
 .DS_Store
 .agentpack/backups/

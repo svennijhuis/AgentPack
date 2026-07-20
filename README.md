@@ -92,19 +92,6 @@ Everything works on all four providers unless the product itself has no correspo
 
 Broadly reusable assets belong in the central catalog. Service-specific assets belong in the owning repository. Both remain versioned, reviewable, and installable through the same CLI.
 
-## AgentPack compared with `vercel-labs/skills`
-
-The [Vercel skills CLI](https://github.com/vercel-labs/skills) is a strong choice for quickly discovering and directly installing public `SKILL.md` packages across a very large set of agents. AgentPack intentionally optimizes for a different workflow:
-
-| Choose AgentPack when you need | Choose `skills` when you need |
-|---|---|
-| approved catalogs and PR review | direct public skill installation |
-| hooks, MCP, prompts, rules, and agents as well as skills | a focused skills-only tool |
-| provider-native conversion and config merging | broad agent-directory compatibility |
-| profiles, groups, project overlays, drift detection, and rollback | lightweight personal discovery through `skills.sh` |
-
-AgentPack searches only the effective approved catalog. External content must be imported at a pinned commit, reviewed, locked, and merged before teammates install it.
-
 ## Everyday workflows
 
 ```bash
@@ -186,8 +173,8 @@ To develop the CLI from this repository:
 dotnet run --project src/AgentPack.Cli -- --help
 dotnet run --project src/AgentPack.Cli -- list
 
-dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=1.0.0-dev.1
-dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 1.0.0-dev.1
+dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=0.0.1-dev.1
+dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 0.0.1-dev.1
 ```
 
 ## Development

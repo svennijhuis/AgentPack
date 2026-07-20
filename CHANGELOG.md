@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1 — Unreleased
+## 0.0.1 — Unreleased
 
 Fixes from a follow-up production-readiness review.
 
@@ -88,9 +88,9 @@ Fixes from a follow-up production-readiness review.
 - CI validates the catalog and re-verifies external assets at their pinned
   refs on every run.
 
-## 1.0.0 — 2026-07-12
+## Pre-release development — 2026-07-12
 
-First stable release. Everything from the production-readiness review is fixed,
+Initial development milestone. Everything from the production-readiness review is fixed,
 regression-tested, and CI-verified on Linux, Windows, and macOS.
 
 ### Fixed

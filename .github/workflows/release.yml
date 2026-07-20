@@ -49,9 +49,9 @@ jobs:
 
       # Publishes to nuget.org so `dotnet tool install -g AgentPack` works without
       # --add-source. Create an API key at https://www.nuget.org/account/apikeys
-      # and add it as the NUGET_API_KEY repository secret. A missing key fails the
-      # release rather than silently shipping nothing to the feed; set the
-      # SKIP_NUGET_PUBLISH repository variable to 'true' for a binaries-only release.
+      # and add it as the NUGET_API_KEY repository secret. A missing key skips this
+      # optional destination while GitHub Packages and release binaries still publish.
+      # Set SKIP_NUGET_PUBLISH to 'true' to skip it explicitly.
       # Override NUGET_FEED_URL (repository variable) to push to a different feed.
       - name: Push to NuGet
         if: vars.SKIP_NUGET_PUBLISH != 'true'
@@ -60,8 +60,8 @@ jobs:
           NUGET_FEED_URL: ${{ vars.NUGET_FEED_URL || 'https://api.nuget.org/v3/index.json' }}
         run: |
           if [[ -z "$NUGET_API_KEY" ]]; then
-            echo "::error::NUGET_API_KEY is not set, so this release would never reach the NuGet feed. Add the secret, or set the SKIP_NUGET_PUBLISH repository variable to 'true' for a binaries-only release."
-            exit 1
+            echo "::warning::NUGET_API_KEY is not set; skipping the optional nuget.org publish."
+            exit 0
           fi
           dotnet nuget push artifacts/*.nupkg --source "$NUGET_FEED_URL" --api-key "$NUGET_API_KEY" --skip-duplicate
 

@@ -20,6 +20,10 @@ assets/skills/grill-me/
   content/SKILL.md
 ```
 
+Everything under `content/` installs as-is. A skill can carry optional
+tool-specific extras (scripts, references, Codex's `agents/openai.yaml`) —
+they are preserved byte-for-byte, and `SKILL.md` alone is always sufficient.
+
 Manifest fields:
 
 ```yaml

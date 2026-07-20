@@ -90,6 +90,42 @@ public class CliEndToEndTests
     }
 
     [Fact]
+    public void SkillExtrasLikeOpenaiYamlSurviveInstallToEveryProvider()
+    {
+        // Skills may ship optional per-tool extras (e.g. Codex's agents/openai.yaml
+        // with desktop-app UI metadata and invocation policy). agentpack copies the
+        // skill tree byte-for-byte — it never strips or generates these files.
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "code-review");
+        var extrasDir = Path.Combine(WorkDir(temp), "assets", "skills", "code-review", "content", "agents");
+        Directory.CreateDirectory(extrasDir);
+        File.WriteAllText(Path.Combine(extrasDir, "openai.yaml"), "display_name: Code Review\ninterface:\n  icon: magnifying-glass\n");
+
+        var add = RunCli(temp, "add", "code-review", "--claude", "--cursor", "--copilot", "--codex", "--project", "--yes");
+        Assert.Equal(0, add.ExitCode);
+        string[] skillRoots =
+        [
+            Path.Combine(".claude", "skills", "code-review"),
+            Path.Combine(".agents", "skills", "code-review"),
+            Path.Combine(".github", "skills", "code-review"),
+            Path.Combine(".cursor", "skills", "code-review")
+        ];
+        foreach (var root in skillRoots)
+        {
+            Assert.True(File.Exists(Path.Combine(WorkDir(temp), root, "SKILL.md")), $"SKILL.md missing under {root}");
+            Assert.True(File.Exists(Path.Combine(WorkDir(temp), root, "agents", "openai.yaml")), $"agents/openai.yaml missing under {root}");
+        }
+
+        var remove = RunCli(temp, "remove", "code-review", "--project", "--yes");
+        Assert.Equal(0, remove.ExitCode);
+        foreach (var root in skillRoots)
+        {
+            Assert.False(Directory.Exists(Path.Combine(WorkDir(temp), root)), $"{root} should be removed");
+        }
+    }
+
+    [Fact]
     public void NewAgentThenAddInstallsEveryProviderFormat()
     {
         using var temp = new TempDir();

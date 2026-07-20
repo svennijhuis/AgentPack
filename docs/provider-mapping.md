@@ -83,6 +83,7 @@ These provider features were audited and intentionally left out, so their absenc
 - **Claude Code output styles** — deprecated upstream.
 - **Claude Code `settings.json` permission policies** — a possible future "policy" kind; needs its own merge semantics.
 - **Copilot `.github/chatmodes/*.chatmode.md`** — superseded by `.github/agents/*.agent.md` custom agents.
+- **Generating `agents/openai.yaml` inside skills** — Codex's optional per-skill extras (desktop-app UI metadata, invocation policy, MCP tool deps). Skills that ship one keep it byte-for-byte (skills install as whole trees); agentpack never generates one, since `SKILL.md` alone is sufficient everywhere and invented invocation policy would change unreviewed behavior.
 - **`copilot-setup-steps.yml`, `.cursor/environment.json`, ignore files (`.cursorignore`, …)** — repo-specific one-offs, not shareable catalog assets.
 
 ## MCP environment variables — per-target syntax

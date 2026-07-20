@@ -30,6 +30,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -47,23 +48,21 @@ jobs:
           --output ./artifacts
           -p:Version=${{ env.VERSION }}
 
-      # Publishes to nuget.org so `dotnet tool install -g AgentPack` works without
-      # --add-source. Create an API key at https://www.nuget.org/account/apikeys
-      # and add it as the NUGET_API_KEY repository secret. A missing key skips this
-      # optional destination while GitHub Packages and release binaries still publish.
-      # Set SKIP_NUGET_PUBLISH to 'true' to skip it explicitly.
-      # Override NUGET_FEED_URL (repository variable) to push to a different feed.
-      - name: Push to NuGet
-        if: vars.SKIP_NUGET_PUBLISH != 'true'
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-          NUGET_FEED_URL: ${{ vars.NUGET_FEED_URL || 'https://api.nuget.org/v3/index.json' }}
-        run: |
-          if [[ -z "$NUGET_API_KEY" ]]; then
-            echo "::warning::NUGET_API_KEY is not set; skipping the optional nuget.org publish."
-            exit 0
-          fi
-          dotnet nuget push artifacts/*.nupkg --source "$NUGET_FEED_URL" --api-key "$NUGET_API_KEY" --skip-duplicate
+      # Exchange GitHub's short-lived OIDC token for a temporary nuget.org API key.
+      # The matching Trusted Publisher policy is registered for this repository and
+      # workflow, so no long-lived publishing secret is stored in GitHub.
+      - name: NuGet login
+        id: nuget_login
+        uses: NuGet/login@v1
+        with:
+          user: svennijhuis
+
+      - name: Push to NuGet.org
+        run: >
+          dotnet nuget push artifacts/*.nupkg
+          --source https://api.nuget.org/v3/index.json
+          --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
+          --skip-duplicate
 
       - name: Push to GitHub Packages
         env:

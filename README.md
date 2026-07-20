@@ -188,3 +188,7 @@ dotnet format --verify-no-changes
 Architecture and behavior: [how it works](docs/how-it-works.md) · [CLI design](docs/cli-design.md) · [provider mapping](docs/provider-mapping.md) · [external assets](docs/external-assets.md) · [breaking changes](docs/breaking-changes.md)
 
 Exit codes: `0` success · `1` user error · `2` validation failure · `3` drift/conflict · `70` internal error.
+
+## License
+
+AgentPack is open source under the [MIT License](LICENSE). You may use, copy, modify, merge, publish, distribute, sublicense, and sell the software. If you copy AgentPack or a substantial portion of its code, keep the copyright and MIT license notice with it. Contributions and improvements are welcome.

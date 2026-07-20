@@ -203,6 +203,74 @@ public class CliEndToEndTests
     }
 
     [Fact]
+    public void ListHidesStatusAndSourceColumnsWhenAllDefault()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "demo-skill");
+
+        var plain = RunCli(temp, "list");
+        Assert.Equal(0, plain.ExitCode);
+        Assert.Contains("demo-skill", plain.Output);
+        Assert.DoesNotContain("Status", plain.Output);
+        Assert.DoesNotContain("Source", plain.Output);
+
+        // A non-default status brings the column back.
+        WriteSkill(temp, "old-skill", "status: deprecated");
+        var withStatus = RunCli(temp, "list");
+        Assert.Equal(0, withStatus.ExitCode);
+        Assert.Contains("Status", withStatus.Output);
+        Assert.Contains("deprecated", withStatus.Output);
+    }
+
+    [Fact]
+    public void StatusOnEmptyScopeExplainsNextStep()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "demo-skill");
+
+        var result = RunCli(temp, "status", "--project");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Nothing installed", result.Output);
+        Assert.Contains("agentpack add", result.Output);
+    }
+
+    [Fact]
+    public void PlanCollapsesUpToDateRows()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        var ids = new[] { "skill-aa", "skill-bb", "skill-cc", "skill-dd", "skill-ee", "skill-ff", "skill-gg" };
+        foreach (var id in ids) WriteSkill(temp, id);
+
+        Assert.Equal(0, RunCli(temp, "add", "skills", "--claude", "--project", "--yes").ExitCode);
+
+        var plan = RunCli(temp, "plan", "skills", "--claude", "--project");
+        Assert.Equal(0, plan.ExitCode);
+        Assert.Contains("7 already up to date", plan.Output);
+        Assert.Contains("not shown", plan.Output);
+        Assert.DoesNotContain("skill-aa", plan.Output);
+    }
+
+    [Fact]
+    public void ReapplyCollapsesAlreadyUpToDateResults()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        var ids = new[] { "skill-aa", "skill-bb", "skill-cc", "skill-dd", "skill-ee", "skill-ff", "skill-gg" };
+        foreach (var id in ids) WriteSkill(temp, id);
+        Assert.Equal(0, RunCli(temp, "add", "skills", "--claude", "--project", "--yes").ExitCode);
+
+        // One new asset makes the second add actionable; the 7 untouched installs collapse.
+        WriteSkill(temp, "skill-new");
+        var again = RunCli(temp, "add", "skills", "--claude", "--project", "--yes");
+        Assert.Equal(0, again.ExitCode);
+        Assert.Contains("installed skill-new", again.Output);
+        Assert.Contains("7 already up to date", again.Output);
+    }
+
+    [Fact]
     public void CatalogLockThenValidatePasses()
     {
         using var temp = new TempDir();

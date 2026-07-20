@@ -6,16 +6,120 @@ namespace AgentPack.Cli.Ui;
 public static class Prompts
 {
     /// <summary>
-    /// Interactive checklist of assets grouped by kind. Used by 'add' (nothing preselected)
-    /// and 'upgrade' (outdated entries preselected).
+    /// Interactive asset picker. Used by 'add' (nothing preselected) and 'upgrade'
+    /// (everything preselected). Catalogs that fit on one page get a single grouped
+    /// checklist; larger ones get a category browser so nobody scrolls through
+    /// hundreds of rows: pick a kind, tick assets, repeat, then Done.
     /// </summary>
     public static IReadOnlyList<Asset> SelectAssets(IReadOnlyList<Asset> assets, string title, bool preselectAll)
     {
+        var pageSize = PageSize();
+        var kinds = assets.Select(x => x.Kind).Distinct().Count();
+
+        // +kinds: group headers occupy rows too.
+        if (assets.Count + kinds <= pageSize || kinds == 1)
+        {
+            var preselected = preselectAll ? assets.Select(x => x.Id) : [];
+            return Checklist(assets, $"{title} — {assets.Count} available", preselected.ToHashSet(StringComparer.OrdinalIgnoreCase), pageSize);
+        }
+
+        return BrowseByKind(assets, title, preselectAll, pageSize);
+    }
+
+    /// <summary>Category loop with a cart: kinds carry counts, selections survive switching kinds.</summary>
+    private static IReadOnlyList<Asset> BrowseByKind(IReadOnlyList<Asset> assets, string title, bool preselectAll, int pageSize)
+    {
+        var cart = new Dictionary<string, Asset>(StringComparer.OrdinalIgnoreCase);
+        if (preselectAll)
+        {
+            foreach (var asset in assets) cart[asset.Id] = asset;
+        }
+
+        var kinds = assets.GroupBy(x => x.Kind).OrderBy(x => x.Key).ToList();
+        while (true)
+        {
+            var done = new KindChoice($"[green]Done[/] — {(cart.Count == 0 ? "nothing selected" : $"{cart.Count} selected")}", Done: true);
+            var everything = new KindChoice(KindLabel("everything", assets, cart), Kind: null);
+            var search = new KindChoice("find one asset [grey](type its name)[/]", Search: true);
+            var prompt = new SelectionPrompt<KindChoice>()
+                .Title($"[bold]{Markup.Escape(title)}[/] [grey]({assets.Count} assets — pick a category, tick assets, repeat; type to search)[/]")
+                .PageSize(Math.Max(pageSize, kinds.Count + 4))
+                .EnableSearch()
+                .UseConverter(choice => choice.Label);
+            prompt.AddChoices(kinds
+                .Select(g => new KindChoice(KindLabel(g.Key.Display(), g.ToList(), cart), g.Key))
+                .Prepend(search)
+                .Prepend(everything)
+                .Prepend(done)
+                .Append(new KindChoice("[grey]Cancel[/]", Cancel: true)));
+
+            var choice = AnsiConsole.Prompt(prompt);
+            if (choice.Done) break;
+            if (choice.Cancel) return [];
+            if (choice.Search)
+            {
+                SearchAssets(assets, cart, pageSize);
+                continue;
+            }
+
+            var subset = choice.Kind is { } kind ? kinds.First(g => g.Key == kind).ToList() : assets.ToList();
+            var scope = choice.Kind is { } k ? k.Display() : "everything";
+            var picked = Checklist(
+                subset,
+                $"{title}: {scope} — {subset.Count} available",
+                subset.Where(x => cart.ContainsKey(x.Id)).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase),
+                pageSize);
+
+            // The checklist result is authoritative for what it showed: unticked means removed.
+            foreach (var asset in subset) cart.Remove(asset.Id);
+            foreach (var asset in picked) cart[asset.Id] = asset;
+        }
+
+        return cart.Values.OrderBy(x => x.Kind).ThenBy(x => x.Id, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>
+    /// Type-to-find across every asset regardless of kind; picking one toggles it
+    /// in the cart. Loops so several assets can be found in a row.
+    /// </summary>
+    private static void SearchAssets(IReadOnlyList<Asset> assets, Dictionary<string, Asset> cart, int pageSize)
+    {
+        while (true)
+        {
+            var prompt = new SelectionPrompt<AssetChoice>()
+                .Title($"[bold]Find an asset[/] [grey](type to filter, enter toggles it, {cart.Count} selected)[/]")
+                .PageSize(pageSize)
+                .EnableSearch()
+                .UseConverter(choice => choice.Label);
+            prompt.AddChoices(assets
+                .OrderBy(x => x.Kind).ThenBy(x => x.Id, StringComparer.Ordinal)
+                .Select(asset => new AssetChoice(
+                    $"{(cart.ContainsKey(asset.Id) ? "[green]✓[/] " : "  ")}{Label(asset)} [grey]· {asset.Kind.Display()}[/]",
+                    asset))
+                .Prepend(new AssetChoice("[grey]back to categories[/]", null)));
+
+            var picked = AnsiConsole.Prompt(prompt).Asset;
+            if (picked is null) return;
+
+            if (!cart.Remove(picked.Id))
+            {
+                cart[picked.Id] = picked;
+                Output.Info($"+ {picked.Id} added ({cart.Count} selected)");
+            }
+            else
+            {
+                Output.Info($"- {picked.Id} removed ({cart.Count} selected)");
+            }
+        }
+    }
+
+    private static IReadOnlyList<Asset> Checklist(IReadOnlyList<Asset> assets, string title, HashSet<string> preselectedIds, int pageSize)
+    {
         var prompt = new MultiSelectionPrompt<AssetChoice>()
             .Title($"[bold]{Markup.Escape(title)}[/]")
-            .PageSize(18)
+            .PageSize(pageSize)
             .NotRequired()
-            .InstructionsText("[grey](space toggles, enter confirms, arrows move)[/]")
+            .InstructionsText("[grey](space toggles, enter confirms, arrows move — a kind row toggles its whole group)[/]")
             .UseConverter(choice => choice.Label);
 
         foreach (var kindGroup in assets.GroupBy(x => x.Kind).OrderBy(x => x.Key))
@@ -26,14 +130,24 @@ public static class Prompts
                 .Select(asset => new AssetChoice(Label(asset), asset))
                 .ToList();
             prompt.AddChoiceGroup(header, children);
-            if (preselectAll)
+            foreach (var child in children.Where(x => preselectedIds.Contains(x.Asset!.Id)))
             {
-                foreach (var child in children) prompt.Select(child);
+                prompt.Select(child);
             }
         }
 
         return AnsiConsole.Prompt(prompt).Where(x => x.Asset is not null).Select(x => x.Asset!).ToList();
     }
+
+    private static string KindLabel(string name, IReadOnlyList<Asset> subset, Dictionary<string, Asset> cart)
+    {
+        var selected = subset.Count(x => cart.ContainsKey(x.Id));
+        return selected > 0
+            ? $"{Markup.Escape(name)} [grey]({selected} of {subset.Count} selected)[/]"
+            : $"{Markup.Escape(name)} [grey]({subset.Count})[/]";
+    }
+
+    private static int PageSize() => Math.Clamp(AnsiConsole.Profile.Height - 6, 10, 30);
 
     public static bool Confirm(string question) => AnsiConsole.Confirm(question, defaultValue: true);
 
@@ -134,7 +248,9 @@ public static class Prompts
 
     private static string Label(Asset asset)
     {
-        var description = asset.Description.Length > 60 ? asset.Description[..57] + "..." : asset.Description;
+        // Fit the description to the terminal: id + version + prompt chrome eat ~30 columns.
+        var room = Math.Clamp(AnsiConsole.Profile.Width - asset.Id.Length - 30, 24, 100);
+        var description = Output.Fit(asset.Description, room);
         var badge = asset.Status switch
         {
             AssetStatus.Experimental => " [grey](experimental)[/]",
@@ -145,4 +261,6 @@ public static class Prompts
     }
 
     private sealed record AssetChoice(string Label, Asset? Asset);
+
+    private sealed record KindChoice(string Label, AssetKind? Kind = null, bool Done = false, bool Cancel = false, bool Search = false);
 }

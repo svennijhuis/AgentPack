@@ -92,7 +92,12 @@ public sealed class ListCommand : Command<ListCommand.Settings>
                         _ => "recommended"
                     });
                 }
-                if (showSource) row.Add(asset.Source is AssetSource.External ? "external" : "local");
+                if (showSource)
+                {
+                    row.Add(asset.Source is AssetSource.External external
+                        ? $"external ({ExternalSourceParser.RepositoryLabel(external)})"
+                        : "local");
+                }
                 row.Add(Output.Fit(asset.Description, descriptionRoom));
                 return row.ToArray();
             }),
@@ -169,7 +174,8 @@ public sealed class FindCommand : Command<FindCommand.Settings>
         asset.Name,
         asset.Description,
         asset.Kind.Display(),
-        string.Join(' ', asset.Groups));
+        string.Join(' ', asset.Groups),
+        (asset.Source as AssetSource.External)?.Url ?? "");
 }
 
 public sealed class GroupsCommand : Command

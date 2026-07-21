@@ -28,6 +28,31 @@ public class JsonStoreAtomicityTests
 
         Assert.True(File.Exists(path));
     }
+
+    [Fact]
+    public void ExternalProvenanceSurvivesLockfileRoundTrip()
+    {
+        using var temp = new TempDir();
+        var path = Path.Combine(temp.Path, "lock.json");
+        JsonStore.Save(path, new AgentPackLock
+        {
+            Entries =
+            [
+                new LockEntry
+                {
+                    Id = "pdf",
+                    SourceUrl = "https://github.com/anthropics/skills",
+                    SourceRef = "9d2f1ae187231d8199c64b5b762e1bdf2244733d",
+                    SourceLicense = "Apache-2.0"
+                }
+            ]
+        });
+
+        var entry = Assert.Single(JsonStore.Load<AgentPackLock>(path).Entries);
+        Assert.Equal("Apache-2.0", entry.SourceLicense);
+        Assert.Equal("https://github.com/anthropics/skills", entry.SourceUrl);
+        Assert.Equal("9d2f1ae187231d8199c64b5b762e1bdf2244733d", entry.SourceRef);
+    }
 }
 
 public class ScopeLockTests

@@ -151,6 +151,23 @@ public static class Prompts
 
     public static bool Confirm(string question) => AnsiConsole.Confirm(question, defaultValue: true);
 
+    public static bool ConfirmApply(IReadOnlyList<InstallPlanItem> items)
+    {
+        var assets = items
+            .Select(x => x.Asset)
+            .DistinctBy(x => (x.Id, x.Kind))
+            .ToList();
+        if (assets is [var asset] && asset.Source is AssetSource.External external)
+        {
+            var verb = items.Any(x => x.Existing is not null) ? "Update" : "Add";
+            return AnsiConsole.Confirm(
+                $"{verb} [bold]{Markup.Escape(asset.Id)}[/] from [blue]{Markup.Escape(ExternalSourceParser.RepositoryLabel(external))}[/]?",
+                defaultValue: true);
+        }
+
+        return Confirm("Apply these changes?");
+    }
+
     /// <summary>
     /// Asks what to do with an item whose installed content was modified locally.
     /// Offers a diff so the user can decide with full information.

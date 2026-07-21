@@ -146,7 +146,12 @@ public static class CatalogMapper
                     return null;
                 }
 
-                return new AssetSource.External(url, reference, NullIfEmpty(dto.Path), NullIfEmpty(dto.Checksum), NullIfEmpty(dto.License));
+                return new AssetSource.External(
+                    url,
+                    reference,
+                    NullIfEmpty(dto.Path),
+                    NullIfEmpty(dto.Checksum),
+                    NullIfEmpty(dto.License));
 
             default:
                 Error(issues, "asset.source.type.invalid", $"{context}: unknown source type '{dto.Type}'. Use local or external.");

@@ -91,11 +91,13 @@ public static class Output
 
             if (shown.Count > 0)
             {
+                var showSource = plan.Items.Any(x => x.Asset.Source is AssetSource.External);
                 var table = new Table().Border(TableBorder.Rounded).BorderColor(Color.Grey);
                 table.AddColumn("[bold]ID[/]");
                 table.AddColumn("[bold]Kind[/]");
                 table.AddColumn("[bold]Provider[/]");
                 table.AddColumn("[bold]Version[/]");
+                if (showSource) table.AddColumn("[bold]Source[/]");
                 table.AddColumn("[bold]Action[/]");
                 table.AddColumn("[bold]Target[/]");
 
@@ -116,13 +118,22 @@ public static class Output
 
                     var target = Path.GetRelativePath(root, item.TargetPath);
                     if (target.StartsWith("..")) target = item.TargetPath;
-                    table.AddRow(
+                    var row = new List<string>
+                    {
                         Markup.Escape(item.Asset.Id),
                         Markup.Escape(item.Asset.Kind.Display()),
                         Markup.Escape(item.Provider.Display()),
-                        Markup.Escape(item.Asset.Version.ToString()),
-                        action,
-                        Markup.Escape(target));
+                        Markup.Escape(item.Asset.Version.ToString())
+                    };
+                    if (showSource)
+                    {
+                        row.Add(Markup.Escape(item.Asset.Source is AssetSource.External external
+                            ? ExternalSourceParser.RepositoryLabel(external)
+                            : "catalog"));
+                    }
+                    row.Add(action);
+                    row.Add(Markup.Escape(target));
+                    table.AddRow(row.ToArray());
                 }
 
                 AnsiConsole.Write(table);

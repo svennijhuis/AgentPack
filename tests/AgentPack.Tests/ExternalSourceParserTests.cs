@@ -80,4 +80,13 @@ public class ExternalSourceParserTests
         var (_, pinned) = ExternalSourceParser.SplitShorthand($"https://github.com/o/r/tree/{Sha}/path");
         Assert.Equal(Sha, pinned);
     }
+
+    [Fact]
+    public void RepositoryLabelUsesGitHubOwnerAndRepoAsAttribution()
+    {
+        var source = new AssetSource.External(
+            "https://github.com/example-org/agent-assets/tree/main/skills/review", Sha, null, null, "MIT");
+
+        Assert.Equal("example-org/agent-assets", ExternalSourceParser.RepositoryLabel(source));
+    }
 }

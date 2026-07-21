@@ -169,7 +169,7 @@ public sealed class ImportCommand : Command<ImportCommand.Settings>
         public string[] Providers { get; set; } = [];
 
         [CommandOption("--license <LICENSE>")]
-        [Description("Upstream license (e.g. MIT). Recorded for compliance.")]
+        [Description("Optional upstream license (e.g. MIT).")]
         public string? License { get; set; }
 
         [CommandOption("--force")]
@@ -195,6 +195,8 @@ public sealed class ImportCommand : Command<ImportCommand.Settings>
                 "Use the full 40-character commit SHA you reviewed.");
         }
 
+        var license = string.IsNullOrWhiteSpace(settings.License) ? null : settings.License.Trim();
+
         var id = (settings.Id ?? Path.GetFileName(url.TrimEnd('/'))).ToLowerInvariant();
         var assetRoot = Path.Combine("assets", kind.Display(), id);
         var manifest = Path.Combine(assetRoot, "agentpack.yaml");
@@ -216,13 +218,18 @@ public sealed class ImportCommand : Command<ImportCommand.Settings>
             settings.Groups.SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).ToList(),
             providers,
             owner: null,
-            externalSource: (url, reference, settings.License)));
+            externalSource: (url, reference, license)));
 
         Output.Success($"Created {manifest}");
+        if (license is null)
+        {
+            Output.Info("No license recorded. That is allowed; reviewers can check the linked repository's terms.");
+        }
         Output.Info("Review checklist before opening the PR:");
         Output.Info("  1. Read the upstream content at the pinned ref — you are approving that exact code.");
-        Output.Info("  2. Fill in the description and groups.");
-        Output.Info("  3. Commit on a branch and open a PR. CI verifies the ref and records the checksum in catalog.lock.yaml.");
+        Output.Info("  2. Confirm the license and any required copyright/NOTICE files are preserved.");
+        Output.Info("  3. Fill in the description and groups.");
+        Output.Info("  4. Commit on a branch and open a PR. CI verifies the ref and records the checksum in catalog.lock.yaml.");
         return 0;
     }
 }
@@ -253,18 +260,10 @@ public static class Scaffolder
 
         if (externalSource is { } external)
         {
-            if (external.License is null)
-            {
-                builder.AppendLine($"source: {external.Url}@{external.Ref}");
-            }
-            else
-            {
-                // The one-line shorthand cannot carry a license; use the mapping form.
-                builder.AppendLine("source:");
-                builder.AppendLine($"  url: {external.Url}");
-                builder.AppendLine($"  ref: {external.Ref}");
-                builder.AppendLine($"  license: {external.License}");
-            }
+            builder.AppendLine("source:");
+            builder.AppendLine($"  url: {external.Url}");
+            builder.AppendLine($"  ref: {external.Ref}");
+            if (external.License is not null) builder.AppendLine($"  license: {external.License}");
         }
         else
         {

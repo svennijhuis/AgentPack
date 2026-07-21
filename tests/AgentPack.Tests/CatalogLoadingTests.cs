@@ -54,6 +54,25 @@ public class CatalogLoadingTests
     }
 
     [Fact]
+    public void ExternalSourceParsesLicense()
+    {
+        using var temp = new TempDir();
+        var root = Path.Combine(temp.Path, "work");
+        WriteMinimalCatalog(root);
+        WriteAsset(root, "skills", "pdf-review", """
+            name: PDF Review
+            version: 1.0.0
+            source:
+              url: https://github.com/anthropics/skills/tree/main/skills/pdf
+              ref: 9d2f1ae187231d8199c64b5b762e1bdf2244733d
+              license: Apache-2.0
+            """);
+
+        var external = Assert.IsType<AssetSource.External>(Load(temp).Catalog.Assets.Single().Source);
+        Assert.Equal("Apache-2.0", external.License);
+    }
+
+    [Fact]
     public void ExternalSourceWithoutRefIsAnError()
     {
         using var temp = new TempDir();

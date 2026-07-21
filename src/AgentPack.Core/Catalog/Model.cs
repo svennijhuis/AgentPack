@@ -64,8 +64,13 @@ public abstract record AssetSource
     /// <summary>Content lives in the catalog repo, by convention in the asset's content/ folder.</summary>
     public sealed record Local(string RelativePath, string? Checksum) : AssetSource;
 
-    /// <summary>Content lives in an external git repo, pinned to an immutable ref.</summary>
-    public sealed record External(string Url, string Ref, string? Path, string? Checksum, string? License) : AssetSource;
+    /// <summary>Content lives in an external git repo, pinned to an immutable ref with its license declaration.</summary>
+    public sealed record External(
+        string Url,
+        string Ref,
+        string? Path,
+        string? Checksum,
+        string? License) : AssetSource;
 }
 
 public sealed record McpServer

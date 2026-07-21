@@ -74,6 +74,7 @@ public class CatalogValidatorTests
             source: new AssetSource.External("https://github.com/o/r.git", Sha, "skills/x", null, null));
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset), verifyChecksums: false);
 
+        Assert.True(report.IsValid);
         Assert.Contains(report.Issues, x => x.Code == "asset.external.license.missing" && x.Severity == IssueSeverity.Warning);
     }
 

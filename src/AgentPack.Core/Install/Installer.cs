@@ -127,6 +127,9 @@ public sealed class Installer
                 InstallMode = item.Target.Mode,
                 SourceChecksum = SourceChecksum(loaded, item.Asset, sourcePath),
                 InstalledChecksum = installed.Checksum,
+                SourceUrl = (item.Asset.Source as AssetSource.External)?.Url,
+                SourceRef = (item.Asset.Source as AssetSource.External)?.Ref,
+                SourceLicense = (item.Asset.Source as AssetSource.External)?.License,
                 Fragment = item.Target.Mode.OwnsWholeTarget() ? null : installed.Fragment,
                 Pinned = item.Existing?.Pinned ?? false
             });

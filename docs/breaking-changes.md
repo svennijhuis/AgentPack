@@ -7,7 +7,8 @@
 - **Bundles are removed.** Profiles carry asset lists directly. Old catalogs still load: bundle assets are folded into the profiles that referenced them, with a warning. Migrate by moving the asset lists into profiles and deleting `bundles:`.
 - **Checksums moved out of manifests.** `source.checksum` is optional; the generated `catalog.lock.yaml` (from `agentpack catalog lock`, run in CI) is the normal home for content hashes. The old `agentpack checksum` command is gone.
 - **`source.path` is gone for local assets.** Content always lives in `content/` next to `agentpack.yaml`. (Manifests that still set `path:` keep working.)
-- **External shorthand.** `source: <url>@<ref>` replaces the `type/url/ref` block. The long form still works and is required when recording `license:`.
+- **External shorthand.** `source: <url>@<ref>` remains parse-compatible for migration, but valid external assets now use the mapping form so they can record `license:`.
+- **External provenance is visible on add.** The repository URL is the attribution; install plans show its compact repository name and single-asset installs confirm `Add <asset> from <repository>?`. License metadata remains optional and warns when omitted.
 - **`providers` omitted now means all providers** (previously it meant none/explicit only). Assets restricted to specific providers must say so explicitly.
 - **`owner` is optional.** Ownership is normally governed by CODEOWNERS on `assets/**`.
 - Unknown kinds, statuses, channels, providers, and malformed versions are now **load errors** with precise messages (previously partially ignored).

@@ -194,7 +194,29 @@ public class CliEndToEndTests
             "https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d");
         Assert.Equal(0, pinned.ExitCode);
         var manifest = File.ReadAllText(Path.Combine(WorkDir(temp), "assets", "skills", "pdf", "agentpack.yaml"));
-        Assert.Contains("source: https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d", manifest);
+        Assert.Contains("url: https://github.com/example/skills/tree/main/skills/pdf", manifest);
+        Assert.Contains("ref: 9d2f1ae187231d8199c64b5b762e1bdf2244733d", manifest);
+        Assert.DoesNotContain("license:", manifest);
+        Assert.Equal(0, RunCli(temp, "catalog", "validate", "--no-checksums").ExitCode);
+
+        var plan = RunCli(temp, "plan", "pdf", "--claude", "--project");
+        Assert.Equal(0, plan.ExitCode);
+        Assert.Contains("Source", plan.Output);
+        Assert.Contains("example/skills", plan.Output);
+    }
+
+    [Fact]
+    public void ImportCanRecordAnOptionalLicense()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        const string source = "https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d";
+
+        var result = RunCli(temp, "import", source, "--license", "MIT");
+
+        Assert.Equal(0, result.ExitCode);
+        var manifest = File.ReadAllText(Path.Combine(WorkDir(temp), "assets", "skills", "pdf", "agentpack.yaml"));
+        Assert.Contains("license: MIT", manifest);
     }
 
     [Fact]

@@ -172,11 +172,11 @@ Scaffold a catalog manifest for reviewed external content. A full commit SHA or 
 - `--ref <ref>`: provide the reviewed ref separately.
 - `--kind <kind>`: defaults to `skills`.
 - `--id <id>`: defaults to the final URL path segment.
-- `--license <license>`: record the upstream license.
+- `--license <license>`: optionally record the upstream license. When omitted, import continues and catalog validation emits a review warning.
 - Group, provider, and force options match `new`.
 
 ```bash
-agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@<commit-sha> --license MIT
+agentpack import https://github.com/example-org/agent-assets/tree/main/skills/code-review@<commit-sha>
 ```
 
 ## Profiles

@@ -79,12 +79,14 @@ Unknown frontmatter fields are ignored by the products that don't use them.
 ## Add an external asset
 
 ```bash
-agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@<commit-sha>
+agentpack import https://github.com/example-org/agent-assets/tree/main/skills/code-review@<commit-sha>
 ```
 
 - The `@<ref>` **must** be a full commit SHA or an immutable tag. Branches are rejected — you are approving exact content, not a moving target.
 - Read the upstream content at that ref before opening the PR; the PR review approves that exact code.
-- Record the upstream license with `--license MIT` when known; validation warns when missing.
+- The repository URL identifies the upstream project; no separate author field is needed.
+- Record the license with optional `--license <license>` when known. Omitting it is allowed and produces a review warning rather than blocking the workflow.
+- Confirm the license covers the exact imported path and preserve every copyright, license, or NOTICE file its terms require.
 
 ## Versioning
 

@@ -174,7 +174,8 @@ public sealed class CatalogValidator
 
                     if (external.License is null)
                     {
-                        report.Warning("asset.external.license.missing", $"External asset '{asset.Id}' does not record its upstream license.");
+                        report.Warning("asset.external.license.missing",
+                            $"External asset '{asset.Id}' has no recorded license. Its repository is preserved as the source; review its terms before redistribution.");
                     }
 
                     var expected = loaded.EffectiveChecksum(asset);

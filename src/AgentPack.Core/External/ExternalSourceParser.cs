@@ -83,6 +83,21 @@ public static class ExternalSourceParser
         return (text, null);
     }
 
+    /// <summary>Compact repository identity used as the visible attribution in catalog listings.</summary>
+    public static string RepositoryLabel(AssetSource.External source)
+    {
+        var tree = GitHubTreeOrBlob.Match(source.Url);
+        if (tree.Success) return $"{tree.Groups["owner"].Value}/{tree.Groups["repo"].Value}";
+
+        var githubRepo = GitHubRepo.Match(source.Url);
+        if (githubRepo.Success) return $"{githubRepo.Groups["owner"].Value}/{githubRepo.Groups["repo"].Value}";
+
+        var azure = AzureDevOpsRepo.Match(source.Url);
+        if (azure.Success) return $"{azure.Groups["org"].Value}/{azure.Groups["project"].Value}/{azure.Groups["repo"].Value}";
+
+        return source.Url;
+    }
+
     private static string AzurePathFromQuery(string url)
     {
         var queryStart = url.IndexOf('?');

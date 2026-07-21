@@ -235,7 +235,7 @@ public static class CommandHelpers
             return 0;
         }
 
-        if (!settings.Yes && Output.CanPrompt && !Prompts.Confirm("Apply these changes?"))
+        if (!settings.Yes && Output.CanPrompt && !Prompts.ConfirmApply(actionable))
         {
             Output.Info("Nothing applied.");
             return 0;

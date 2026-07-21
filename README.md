@@ -137,7 +137,7 @@ agentpack new skills grill-me --group review
 agentpack new skills service-setup --overlay
 
 # Reviewed third-party asset
-agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@<commit-sha>
+agentpack import https://github.com/example-org/agent-assets/tree/main/skills/code-review@<commit-sha>
 
 # PR checks
 agentpack catalog validate
@@ -154,6 +154,8 @@ description: Challenges a plan with critical review questions.
 groups: [engineering, review]
 # providers omitted = available to all supported providers
 ```
+
+External assets record their repository URL and pinned revision, which identify the upstream project and exact reviewed content. A license can be recorded with optional `--license <license>`. When someone installs the asset, `agentpack add` shows the repository in its plan and confirmation.
 
 Profiles combine groups and explicit assets into a one-command team setup. See [catalog authoring](docs/catalog-authoring.md), [team overlays](docs/team-overlays.md), [groups and profiles](docs/groups-bundles-profiles.md), and [governance](docs/governance.md).
 

@@ -7,27 +7,29 @@ External assets live in someone else's git repo (GitHub, Azure DevOps, any `.git
 - **Pin or nothing.** `ref` must be a full commit SHA (preferred) or an immutable tag. Branches (`main`, `latest`, `refs/heads/...`) are rejected at validation. AgentPack never follows upstream automatically.
 - **Checksummed.** `agentpack catalog lock` fetches the pinned content and records its sha256 in `catalog.lock.yaml`. Every later install verifies the hash — if upstream force-pushes over the SHA or a tag moves, the install fails loudly (exit 3).
 - **Upgrades are PRs.** Bumping `ref` is a catalog change; the reviewer re-reads the upstream diff. That's the human gate the org wants for third-party code.
+- **The repository is the attribution.** The source URL identifies the upstream project and the pinned ref identifies the exact reviewed revision.
+- **License metadata stays lightweight.** Record the license when known. An omitted license is allowed with a warning; it is not treated as permission to redistribute.
 
 ## Authoring
 
 ```bash
-agentpack import https://github.com/anthropics/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d
+agentpack import https://github.com/example-org/agent-assets/tree/main/skills/code-review@9d2f1ae187231d8199c64b5b762e1bdf2244733d
 ```
 
-Manifest (one line):
+Pass `--license MIT` when the license is known. Otherwise import continues without another question.
 
-```yaml
-source: https://github.com/anthropics/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d
-```
-
-With a recorded license, use the mapping form:
+Manifest:
 
 ```yaml
 source:
-  url: https://github.com/anthropics/skills/tree/main/skills/pdf
+  url: https://github.com/example-org/agent-assets/tree/main/skills/code-review
   ref: 9d2f1ae187231d8199c64b5b762e1bdf2244733d
   license: MIT
 ```
+
+`license` should use the upstream SPDX identifier when available. If no license can be confirmed, omit the field; catalog validation warns instead of failing. Reviewers must still confirm that the license applies to the exact imported path and that any copyright, license, or NOTICE files required by it remain with the content; manifest metadata is not a substitute for those files. AgentPack preserves any recorded license with the source URL and ref in its installation lockfile.
+
+When a consumer runs `agentpack add`, the install plan includes a **Source** column such as `example-org/agent-assets`. For a single external asset, the confirmation is explicit: `Add code-review from example-org/agent-assets?` Non-GitHub sources fall back to their repository URL.
 
 Supported URL shapes:
 

@@ -29,6 +29,9 @@ public sealed class LockEntry
     public InstallMode InstallMode { get; set; } = InstallMode.CopyTree;
     public string SourceChecksum { get; set; } = "";
     public string InstalledChecksum { get; set; } = "";
+    public string? SourceUrl { get; set; }
+    public string? SourceRef { get; set; }
+    public string? SourceLicense { get; set; }
 
     /// <summary>
     /// For merge-mode installs: the exact fragment written into the shared provider

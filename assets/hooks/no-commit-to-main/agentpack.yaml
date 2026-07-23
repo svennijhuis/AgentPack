@@ -1,0 +1,15 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'No Commit To Main'
+version: 1.0.0
+description: 'Block `git commit` while the repo is on a protected branch (main/master); the agent must branch first. Greps the raw Bash payload, so it works on every provider.'
+groups: ['engineering', 'security']
+tags: ['git', 'safety', 'policy']
+owner: 'developer-platform'
+# providers omitted = available for all providers (Bash-content hook greps the raw payload)
+status: experimental
+channel: beta
+hook:
+  trigger: preToolUse
+  tool: 'Bash'
+  command: 'hook.sh'
+  timeoutSec: 10

@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Debugger'
+version: 1.0.0
+description: 'Debugging specialist for errors, test failures, and unexpected behavior. Use when encountering any issue.'
+groups: ['engineering']
+tags: ['debugging']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/wshobson/agents/blob/main/plugins/debugging-toolkit/agents/debugger.md'
+  ref: 'c4b82b0ad771190355eb8e204b1329732a18449a'
+  license: 'MIT'

@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Requesting Code Review'
+version: 1.0.0
+description: 'Request a code review the right way. Use when completing tasks, implementing major features, or before merging, to verify work meets requirements.'
+groups: ['review', 'engineering']
+tags: ['review']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/obra/superpowers/tree/main/skills/requesting-code-review'
+  ref: 'd884ae04edebef577e82ff7c4e143debd0bbec99'
+  license: 'MIT'

@@ -1,0 +1,18 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Tool Guardian'
+version: 1.0.0
+description: 'Block destructive tool operations (force pushes, recursive deletes, DB drops) before the agent runs them. Reads the Copilot tool payload (toolName/toolInput), so this hook is Copilot-only.'
+groups: ['security']
+tags: ['safety', 'policy']
+owner: 'security-platform'
+providers: ['copilot']
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/github/awesome-copilot/tree/main/hooks/tool-guardian'
+  ref: 'dae77f24132c1d686c30fd5b29aee0d63668d1d2'
+  license: 'MIT'
+hook:
+  trigger: preToolUse
+  command: 'guard-tool.sh'
+  timeoutSec: 10

@@ -203,6 +203,29 @@ One active catalog keeps the trust model understandable. The catalog is always t
 
 “—” means the provider has no corresponding feature. AgentPack reports the skip instead of inventing a format. See [provider mapping](docs/provider-mapping.md) for paths and translations.
 
+## Included assets and attribution
+
+The official catalog is seeded with assets curated from permissively licensed upstream projects. External entries are pinned to a reviewed commit and checksummed; the repository and ref are the attribution, shown again at install time.
+
+| Upstream | License | Kinds it supplies |
+|---|---|---|
+| [mattpocock/skills](https://github.com/mattpocock/skills) | MIT | skills, one git-safety hook |
+| [obra/superpowers](https://github.com/obra/superpowers) | MIT | skills |
+| [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) | MIT | skills |
+| [vercel-labs/skills](https://github.com/vercel-labs/skills) | MIT | skills |
+| [microsoft/azure-skills](https://github.com/microsoft/azure-skills) | MIT | skills |
+| [shadcn-ui/ui](https://github.com/shadcn-ui/ui) | MIT | skills |
+| [wshobson/agents](https://github.com/wshobson/agents) | MIT | agents |
+| [wshobson/commands](https://github.com/wshobson/commands) | MIT | prompts |
+| [github/awesome-copilot](https://github.com/github/awesome-copilot) | MIT | hooks, instructions |
+| [PatrickJS/awesome-cursorrules](https://github.com/PatrickJS/awesome-cursorrules) | CC0-1.0 | rules |
+
+A few deliberate scoping notes:
+
+- **Rules from awesome-cursorrules install on Cursor only.** Their `.mdc` frontmatter (`globs: **/*`, unquoted) is not strict YAML, so Claude's `.mdc` → rule conversion cannot parse it. Cursor copies the file verbatim, so that is where they are offered.
+- **Only one `instructions` asset applies per provider.** Instructions target the whole `CLAUDE.md` / `AGENTS.md` file, so installing a second replaces the first.
+- **Some hooks are provider-scoped** to match the tool payload their script actually parses (for example `tool-guardian` reads the Copilot payload; `git-guardrails` reads the Claude payload). Installing a hook only where it can work is preferred over a silent no-op.
+
 ## Safety and review
 
 - External assets are pinned to reviewed commit SHAs and checksummed.

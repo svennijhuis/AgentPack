@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Codebase Design'
+version: 1.0.0
+description: 'Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module''s interface, decide where a seam goes, or make code more testable and AI-navigable.'
+groups: ['engineering']
+tags: ['architecture', 'design']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/mattpocock/skills/tree/main/skills/engineering/codebase-design'
+  ref: 'ed37663cc5fbef691ddfecd080dff42f7e7e350d'
+  license: 'MIT'

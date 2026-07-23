@@ -1,0 +1,15 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Fetch MCP'
+version: 1.0.0
+description: 'Fetch a URL and return its content as markdown for the agent to read. Runs locally via uvx (Python). Use to let the agent pull documentation or web pages.'
+groups: ['engineering']
+tags: ['mcp', 'web']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+mcp:
+  server: 'fetch'
+  transport: stdio
+  command: 'uvx'
+  args: ['mcp-server-fetch']

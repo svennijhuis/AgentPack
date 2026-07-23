@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Caveman Commit'
+version: 1.0.0
+description: 'Generate a compact Conventional-Commits commit message that keeps intent and reasoning while cutting noise. Use when staging changes or writing a commit.'
+groups: ['productivity']
+tags: ['git', 'commits']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/JuliusBrussee/caveman/tree/main/skills/caveman-commit'
+  ref: '0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0'
+  license: 'MIT'

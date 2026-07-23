@@ -6,6 +6,15 @@ Catalog-first workflow and safety cleanup.
 
 ### Added
 
+- **Seeded the official catalog across every installable kind.** It now ships 60
+  assets — skills, hooks, MCP servers, agents, prompts, rules, and instructions —
+  instead of three examples. External assets are pinned to commit SHAs and
+  checksummed; sources are permissively licensed only (MIT / CC0). Upstream:
+  `mattpocock/skills`, `obra/superpowers`, `github/awesome-copilot`,
+  `wshobson/agents`, `wshobson/commands`, `PatrickJS/awesome-cursorrules`,
+  `microsoft/azure-skills`, `shadcn-ui/ui`, `vercel-labs/skills`, and
+  `JuliusBrussee/caveman`. A coverage test keeps every installable kind populated.
+
 - **One built-in catalog.** Normal users can search and install without configuring
   a repository. Install and update refresh it automatically; status shows the URL,
   branch, revision, cache, and last refresh.

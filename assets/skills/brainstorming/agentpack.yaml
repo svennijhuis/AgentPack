@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Brainstorming'
+version: 1.0.0
+description: 'Explore user intent, requirements, and design before implementation. Use before any creative work — creating features, building components, or modifying behavior.'
+groups: ['productivity']
+tags: ['planning']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/obra/superpowers/tree/main/skills/brainstorming'
+  ref: 'd884ae04edebef577e82ff7c4e143debd0bbec99'
+  license: 'MIT'

@@ -1,0 +1,18 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Fix Broken Links'
+version: 1.0.0
+description: 'After the agent edits files, scan changed files for http(s) URLs and report ones that no longer resolve. PostToolUse; requires curl. Reads both Claude and Copilot payload shapes.'
+groups: ['docs']
+tags: ['docs', 'links']
+owner: 'developer-platform'
+providers: ['claude', 'codex', 'copilot']
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/github/awesome-copilot/tree/main/hooks/fix-broken-links'
+  ref: 'dae77f24132c1d686c30fd5b29aee0d63668d1d2'
+  license: 'MIT'
+hook:
+  trigger: postToolUse
+  command: 'link-fix.sh'
+  timeoutSec: 60

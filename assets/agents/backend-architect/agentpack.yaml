@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Backend Architect'
+version: 1.0.0
+description: 'Backend architect for scalable API design, microservices, and distributed systems (REST/GraphQL/gRPC, event-driven, resilience). Use when creating new backend services or APIs.'
+groups: ['backend', 'engineering']
+tags: ['architecture', 'backend']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/wshobson/agents/blob/main/plugins/backend-development/agents/backend-architect.md'
+  ref: 'c4b82b0ad771190355eb8e204b1329732a18449a'
+  license: 'MIT'

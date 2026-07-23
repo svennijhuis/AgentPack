@@ -1,0 +1,15 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Memory MCP'
+version: 1.0.0
+description: 'Persistent knowledge-graph memory server. Lets the agent store and recall entities and relations across a session. Runs locally via npx; no credentials.'
+groups: ['engineering']
+tags: ['mcp', 'memory']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+mcp:
+  server: 'memory'
+  transport: stdio
+  command: 'npx'
+  args: ['-y', '@modelcontextprotocol/server-memory']

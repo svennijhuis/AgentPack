@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'shadcn/ui'
+version: 1.0.0
+description: 'Add, search, fix, and compose shadcn/ui components, with project context, component docs, and usage examples. Applies to any project with a components.json, and to shadcn init / --preset workflows.'
+groups: ['frontend']
+tags: ['ui', 'components']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/shadcn-ui/ui/tree/main/skills/shadcn'
+  ref: '4baadbc6517070ae8f8feb2c97037adc2b305544'
+  license: 'MIT'

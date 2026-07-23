@@ -1,0 +1,15 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Format On Write'
+version: 1.0.0
+description: 'After the agent edits a file, run the repo''s own formatter (Prettier, ruff/black, gofmt, dotnet format) on just that file. No-op when no matching config is present; never blocks. Uses the Claude hook schema, so Claude/Codex only.'
+groups: ['engineering']
+tags: ['formatting', 'quality']
+owner: 'developer-platform'
+providers: ['claude', 'codex']
+status: experimental
+channel: beta
+hook:
+  trigger: postToolUse
+  tool: 'Edit|Write'
+  command: 'hook.sh'
+  timeoutSec: 30

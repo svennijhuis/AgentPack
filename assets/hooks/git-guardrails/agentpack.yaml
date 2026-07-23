@@ -1,0 +1,19 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Git Guardrails'
+version: 1.0.0
+description: 'Block dangerous git commands (push, reset --hard, clean -f, branch -D, checkout . / restore .) before they run. PreToolUse hook that reads the Claude-shaped tool payload; requires jq. Claude/Codex only.'
+groups: ['security', 'engineering']
+tags: ['git', 'safety', 'policy']
+owner: 'developer-platform'
+providers: ['claude', 'codex']
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/mattpocock/skills/tree/main/skills/misc/git-guardrails-claude-code'
+  ref: 'ed37663cc5fbef691ddfecd080dff42f7e7e350d'
+  license: 'MIT'
+hook:
+  trigger: preToolUse
+  tool: 'Bash'
+  command: 'scripts/block-dangerous-git.sh'
+  timeoutSec: 10

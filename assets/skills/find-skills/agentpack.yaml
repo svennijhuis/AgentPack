@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Find Skills'
+version: 1.0.0
+description: 'Helps the user discover and install agent skills when they ask how to do X, look for a skill for X, or want to extend capabilities.'
+groups: ['productivity']
+tags: ['discovery', 'skills']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/vercel-labs/skills/tree/main/skills/find-skills'
+  ref: 'e173b8c88f2581cfdaa1b6767c6519a08155790e'
+  license: 'MIT'

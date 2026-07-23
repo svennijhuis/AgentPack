@@ -30,6 +30,19 @@ The org catalog is the trusted source of truth. Everything below assumes the cat
 - Group retirement: `status: deprecated` + `replacedBy` + `removeAfter` — enforced by validation.
 - Emergency kill switch: set `status: blocked` and merge; new installs stop and `update` warns existing users after their catalog refreshes.
 
+## Sourcing policy
+
+- **Permissively licensed only.** The official catalog seeds external assets from
+  MIT, Apache-2.0, or CC0 sources. A repository with no discoverable license is not
+  imported — for example `anthropics/skills` is excluded until it publishes a LICENSE,
+  because a recorded manifest license is never a substitute for the upstream terms.
+- **One pinned commit per upstream repo.** Every asset drawn from the same repo shares
+  one SHA, so a future upstream bump is a single reviewable change rather than many.
+- **Install only where it works.** An asset's `providers` are narrowed to the tools that
+  can actually run its content — a hook script that parses one product's tool payload,
+  or a rule whose `.mdc` frontmatter only a particular product accepts. An honest skip
+  beats an install into a file nothing reads or a hook that never fires.
+
 ## Supply-chain posture
 
 - External refs are pinned to commit SHAs (tags allowed but warned); branches are validation errors.

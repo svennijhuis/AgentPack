@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Compliance Check'
+version: 1.0.0
+description: 'Check code and configuration against regulatory requirements (GDPR/HIPAA/SOC2) and report gaps. Use for a compliance pass.'
+groups: ['security']
+tags: ['compliance']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/wshobson/commands/blob/main/tools/compliance-check.md'
+  ref: '27d3e77b1a844223721f6c983ddf261ac4441b89'
+  license: 'MIT'

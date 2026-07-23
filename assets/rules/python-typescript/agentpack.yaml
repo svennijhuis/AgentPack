@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Python + TypeScript Rules'
+version: 1.0.0
+description: 'Cursor rules for Python development with a TypeScript guide.'
+groups: ['backend', 'engineering']
+tags: ['python', 'typescript']
+owner: 'developer-platform'
+providers: ['cursor']
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/PatrickJS/awesome-cursorrules/blob/main/rules/python--typescript-guide-cursorrules-prompt-file.mdc'
+  ref: 'b044f956f021b6e8877f16781bcfc466a6a120e9'
+  license: 'CC0-1.0'

@@ -1,0 +1,16 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'GitHub MCP (remote)'
+version: 1.0.0
+description: 'GitHub''s hosted MCP endpoint over HTTP: issues, pull requests, and repository data without running a local server. Authenticates with a GitHub token via the Authorization header. Not available in Copilot user scope (no header expansion) — install at project scope.'
+groups: ['backend', 'engineering']
+tags: ['mcp', 'github', 'remote']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+mcp:
+  server: 'github-remote'
+  transport: http
+  url: 'https://api.githubcopilot.com/mcp/'
+  headerEnvVars:
+    'Authorization': 'GITHUB_TOKEN'

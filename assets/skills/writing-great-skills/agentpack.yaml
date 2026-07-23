@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Writing Great Skills'
+version: 1.0.0
+description: 'Reference for writing and editing agent skills well — the vocabulary and principles that make a skill predictable. Use when authoring or reviewing a SKILL.md.'
+groups: ['productivity', 'docs']
+tags: ['authoring', 'docs']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-great-skills'
+  ref: 'ed37663cc5fbef691ddfecd080dff42f7e7e350d'
+  license: 'MIT'

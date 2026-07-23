@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Accessibility Audit'
+version: 1.0.0
+description: 'Audit UI for accessibility issues (WCAG) and suggest fixes. Use before shipping user-facing UI.'
+groups: ['frontend', 'review']
+tags: ['accessibility', 'audit']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/wshobson/commands/blob/main/tools/accessibility-audit.md'
+  ref: '27d3e77b1a844223721f6c983ddf261ac4441b89'
+  license: 'MIT'

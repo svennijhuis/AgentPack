@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'UI Visual Validator'
+version: 1.0.0
+description: 'Visual validation expert for UI testing, design-system compliance, and accessibility verification via screenshot and regression analysis. Use to verify UI changes.'
+groups: ['frontend', 'testing']
+tags: ['frontend', 'accessibility']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/wshobson/agents/blob/main/plugins/accessibility-compliance/agents/ui-visual-validator.md'
+  ref: 'c4b82b0ad771190355eb8e204b1329732a18449a'
+  license: 'MIT'

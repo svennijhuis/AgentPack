@@ -10,16 +10,39 @@ groups:
     name: Security
   - id: backend
     name: Backend
+  - id: frontend
+    name: Frontend
   - id: infra
     name: Infrastructure
+  - id: testing
+    name: Testing
+  - id: docs
+    name: Documentation
+  - id: productivity
+    name: Productivity
   - id: api
     name: API
     status: deprecated
     replacedBy: backend
     removeAfter: "2026-12-31"
 profiles:
+  - id: starter
+    name: Starter
+    providers: [claude, codex]
+    groups: [engineering]
+    assets: [grill-me, code-review, tdd, memory]
   - id: backend
     name: Backend Team
     providers: [codex, claude]
     groups: [backend]
     assets: [grill-me, secret-scan, github]
+  - id: frontend
+    name: Frontend Team
+    providers: [claude, cursor]
+    groups: [frontend]
+    assets: [playwright, react-typescript]
+  - id: security
+    name: Security Team
+    providers: [claude, codex]
+    groups: [security]
+    assets: [secret-scan, protect-secret-files, git-guardrails]

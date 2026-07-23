@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'API Scaffold'
+version: 1.0.0
+description: 'Generate an API scaffold (endpoints, models, validation) from a short description. Use to bootstrap a new service or endpoint.'
+groups: ['backend', 'engineering']
+tags: ['scaffold', 'api']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/wshobson/commands/blob/main/tools/api-scaffold.md'
+  ref: '27d3e77b1a844223721f6c983ddf261ac4441b89'
+  license: 'MIT'

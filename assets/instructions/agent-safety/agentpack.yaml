@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Agent Safety Instructions'
+version: 1.0.0
+description: 'Guidelines for building safe, governed AI agent systems — safety boundaries, policy enforcement, and auditability for tool-calling and multi-agent code.'
+groups: ['security']
+tags: ['safety', 'agents']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/github/awesome-copilot/blob/main/instructions/agent-safety.instructions.md'
+  ref: 'dae77f24132c1d686c30fd5b29aee0d63668d1d2'
+  license: 'MIT'

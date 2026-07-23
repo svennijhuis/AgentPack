@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Code Reviewer'
+version: 1.0.0
+description: 'Elite code review expert for security vulnerabilities, performance, and production reliability. Use for code quality assurance on a diff or PR.'
+groups: ['engineering', 'review']
+tags: ['review', 'quality']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/wshobson/agents/blob/main/plugins/comprehensive-review/agents/code-reviewer.md'
+  ref: 'c4b82b0ad771190355eb8e204b1329732a18449a'
+  license: 'MIT'

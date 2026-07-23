@@ -1,0 +1,15 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Block rm -rf'
+version: 1.0.0
+description: 'Block catastrophic recursive force-deletes (rm -rf targeting /, ~, $HOME, or a bare wildcard) before they run. Greps the raw Bash payload, so it works on every provider.'
+groups: ['security']
+tags: ['safety', 'policy']
+owner: 'security-platform'
+# providers omitted = available for all providers (Bash-content hook greps the raw payload)
+status: experimental
+channel: beta
+hook:
+  trigger: preToolUse
+  tool: 'Bash'
+  command: 'hook.sh'
+  timeoutSec: 10

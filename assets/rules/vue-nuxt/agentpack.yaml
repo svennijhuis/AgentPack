@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Vue 3 + Nuxt Rules'
+version: 1.0.0
+description: 'Cursor rules for Vue 3 development with TypeScript.'
+groups: ['frontend']
+tags: ['vue', 'nuxt']
+owner: 'developer-platform'
+providers: ['cursor']
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/PatrickJS/awesome-cursorrules/blob/main/rules/vue-3-nuxt-3-typescript-cursorrules-prompt-file.mdc'
+  ref: 'b044f956f021b6e8877f16781bcfc466a6a120e9'
+  license: 'CC0-1.0'

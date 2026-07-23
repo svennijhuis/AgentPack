@@ -1,0 +1,14 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Caveman'
+version: 1.0.0
+description: 'Ultra-compressed communication mode that cuts token usage ~75% by speaking tersely while keeping full technical accuracy. Supports intensity levels (lite, full, ultra). Use when the user asks for caveman mode, fewer tokens, or a terser assistant.'
+groups: ['productivity']
+tags: ['communication', 'tokens']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+source:
+  url: 'https://github.com/JuliusBrussee/caveman/tree/main/skills/caveman'
+  ref: '0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0'
+  license: 'MIT'

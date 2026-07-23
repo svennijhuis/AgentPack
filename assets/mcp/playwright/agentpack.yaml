@@ -1,0 +1,15 @@
+# Asset manifest. Id and kind come from the folder path (assets/<kind>/<id>/).
+name: 'Playwright MCP'
+version: 1.0.0
+description: 'Browser automation server: drive a real browser to navigate, click, fill forms, and read the page. Use for end-to-end UI checks. Runs locally via npx.'
+groups: ['testing', 'frontend']
+tags: ['mcp', 'browser', 'testing']
+owner: 'developer-platform'
+# providers omitted = available for all providers
+status: experimental
+channel: beta
+mcp:
+  server: 'playwright'
+  transport: stdio
+  command: 'npx'
+  args: ['-y', '@playwright/mcp@latest']

@@ -200,11 +200,26 @@ public static class CommandHelpers
             if (missing.Count > 0)
             {
                 var known = catalog.Assets.Select(x => x.Id).ToList();
-                var suggestions = missing
-                    .Select(id => Suggestions.Nearest(id, known) is { } near ? $"'{id}' (did you mean '{near}'?)" : $"'{id}'");
+                var knownSet = new HashSet<string>(known, StringComparer.OrdinalIgnoreCase);
+
+                // An id that exists in the catalog but is absent here was excluded by the
+                // active kind/group/provider filter — it is not unknown, so it never gets a
+                // "did you mean" hint pointing at itself.
+                var filteredOut = missing.Where(knownSet.Contains).ToList();
+                var unknown = missing.Where(id => !knownSet.Contains(id)).ToList();
+
+                if (unknown.Count > 0)
+                {
+                    var suggestions = unknown
+                        .Select(id => Suggestions.Nearest(id, known) is { } near ? $"'{id}' (did you mean '{near}'?)" : $"'{id}'");
+                    throw new AgentPackException(
+                        $"Unknown asset id(s): {string.Join(", ", suggestions)}.",
+                        "Run 'agentpack list' to see the catalog.");
+                }
+
                 throw new AgentPackException(
-                    $"Unknown asset id(s): {string.Join(", ", suggestions)}.",
-                    "Run 'agentpack list' to see the catalog.");
+                    $"Asset id(s) not available under the current filters: {string.Join(", ", filteredOut.Select(x => $"'{x}'"))}.",
+                    "These exist in the catalog but don't match the requested kind, group, or provider. Run 'agentpack list' to see where they apply.");
             }
 
             return byId;

@@ -85,6 +85,7 @@ These provider features were audited and intentionally left out, so their absenc
 - **Copilot `.github/chatmodes/*.chatmode.md`** — superseded by `.github/agents/*.agent.md` custom agents.
 - **Generating `agents/openai.yaml` inside skills** — Codex's optional per-skill extras (desktop-app UI metadata, invocation policy, MCP tool deps). Skills that ship one keep it byte-for-byte (skills install as whole trees); agentpack never generates one, since `SKILL.md` alone is sufficient everywhere and invented invocation policy would change unreviewed behavior.
 - **`copilot-setup-steps.yml`, `.cursor/environment.json`, ignore files (`.cursorignore`, …)** — repo-specific one-offs, not shareable catalog assets.
+- **`sessionEnd` (and multi-event) hooks** — the normalized `HookTrigger` set has no `sessionEnd`, and a hook asset carries exactly one trigger + one command. Several upstream Copilot hooks (`secrets-scanner`, `session-auto-commit`, `session-logger`, `governance-audit`) are built on `sessionEnd` or fan out across `sessionStart`/`sessionEnd`/`userPromptSubmitted`, so they cannot be expressed as one asset yet. Adding a `SessionEnd` trigger and/or a multi-trigger `HookSpec` would each need its own per-provider mapping and merger golden tests.
 
 ## MCP environment variables — per-target syntax
 

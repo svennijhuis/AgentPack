@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.1 — Unreleased
+## 0.3.0 — 2026-07-23
 
 Catalog-first workflow and safety cleanup.
 
@@ -89,8 +89,8 @@ Catalog-first workflow and safety cleanup.
 ### Changed
 
 - Releases now gate on the same three-OS test matrix as CI, attach a
-  `SHA256SUMS` file, and fail loudly when `NUGET_API_KEY` is missing (set the
-  `SKIP_NUGET_PUBLISH` repository variable for a binaries-only release).
+  `SHA256SUMS` file, and publish to NuGet.org through trusted publishing without
+  storing a long-lived API key.
 - CI validates the catalog and re-verifies external assets at their pinned
   refs on every run.
 

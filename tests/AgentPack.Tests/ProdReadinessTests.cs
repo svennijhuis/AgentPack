@@ -541,7 +541,7 @@ public class CatalogStalenessTests
         using var temp = new TempDir();
         var paths = TestData.Paths(temp);
         var sources = new SourceManager(paths);
-        sources.AddSource("org", "https://example.com/unreachable.git");
+        sources.UseSource("org", "https://example.com/unreachable.git");
 
         var cachePath = sources.SourceCachePath(new AgentPackSource { Name = "org" });
         Directory.CreateDirectory(cachePath);
@@ -556,7 +556,7 @@ public class CatalogStalenessTests
         using var temp = new TempDir();
         var paths = TestData.Paths(temp);
         var sources = new SourceManager(paths);
-        sources.AddSource("org", "https://example.invalid/unreachable.git");
+        sources.UseSource("org", "https://example.invalid/unreachable.git");
 
         var cachePath = sources.SourceCachePath(new AgentPackSource { Name = "org" });
         Directory.CreateDirectory(cachePath);

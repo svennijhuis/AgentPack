@@ -6,7 +6,7 @@ namespace AgentPack.Cli.Ui;
 public static class Prompts
 {
     /// <summary>
-    /// Interactive asset picker. Used by 'add' (nothing preselected) and 'upgrade'
+    /// Interactive asset picker. Used by 'install' (nothing preselected) and 'update'
     /// (everything preselected). Catalogs that fit on one page get a single grouped
     /// checklist; larger ones get a category browser so nobody scrolls through
     /// hundreds of rows: pick a kind, tick assets, repeat, then Done.
@@ -150,6 +150,9 @@ public static class Prompts
     private static int PageSize() => Math.Clamp(AnsiConsole.Profile.Height - 6, 10, 30);
 
     public static bool Confirm(string question) => AnsiConsole.Confirm(question, defaultValue: true);
+
+    /// <summary>Publishing affects a shared repository, so Enter alone must not approve it.</summary>
+    public static bool ConfirmSubmission(string question) => AnsiConsole.Confirm(question, defaultValue: false);
 
     public static bool ConfirmApply(IReadOnlyList<InstallPlanItem> items)
     {

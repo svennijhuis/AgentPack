@@ -1,6 +1,0 @@
-schemaVersion: "1"
-catalogVersion: 0.1.0
-groups:
-  - id: platform
-    name: Platform Team Overlay
-    status: active

@@ -24,6 +24,49 @@ public static class ExternalSourceParser
         @"^https://(dev\.azure\.com/(?<org>[^/]+)|(?<org>[^./]+)\.visualstudio\.com)/(?<project>[^/]+)/_git/(?<repo>[^/?#]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    private static readonly Regex GitHubSshRepo = new(
+        @"^(ssh://git@github\.com/|git@github\.com:)(?<owner>[^/]+)/(?<repo>[^/]+?)(\.git)?/?$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// The cloneable repo URL for a source URL, plus the branch the URL names when it
+    /// is a tree/blob link. Used to pin a submission to a commit before that submission
+    /// has a manifest to <see cref="Resolve"/>.
+    /// </summary>
+    public static (string Repo, string? Branch) RepositoryAndBranch(string url)
+    {
+        var tree = GitHubTreeOrBlob.Match(url);
+        if (tree.Success)
+        {
+            return ($"https://github.com/{tree.Groups["owner"].Value}/{tree.Groups["repo"].Value}.git",
+                tree.Groups["ref"].Value);
+        }
+
+        var githubRepo = GitHubRepo.Match(url);
+        if (githubRepo.Success)
+        {
+            return ($"https://github.com/{githubRepo.Groups["owner"].Value}/{githubRepo.Groups["repo"].Value}.git", null);
+        }
+
+        var azure = AzureDevOpsRepo.Match(url);
+        if (azure.Success) return (url[..(azure.Index + azure.Length)], null);
+
+        return (url, null);
+    }
+
+    /// <summary>
+    /// The <c>owner/repo</c> slug when the URL points at GitHub over HTTPS or SSH,
+    /// otherwise null. Only GitHub-hosted catalogs can be driven by the 'gh' CLI.
+    /// </summary>
+    public static string? GitHubSlug(string url)
+    {
+        var text = url.Trim();
+        var match = GitHubTreeOrBlob.Match(text);
+        if (!match.Success) match = GitHubRepo.Match(text);
+        if (!match.Success) match = GitHubSshRepo.Match(text);
+        return match.Success ? $"{match.Groups["owner"].Value}/{match.Groups["repo"].Value}" : null;
+    }
+
     public static ResolvedExternalSource Resolve(AssetSource.External source)
     {
         var tree = GitHubTreeOrBlob.Match(source.Url);

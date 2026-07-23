@@ -27,8 +27,7 @@ public sealed class ListCommand : Command<ListCommand.Settings>
         var session = new CliSession();
         var loaded = session.LoadCatalog();
 
-        var providerFilter = settings.Providers
-            .SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var providerFilter = CommandHelpers.SplitList(settings.Providers)
             .Select(ProviderNames.Parse)
             .ToList();
 
@@ -47,7 +46,7 @@ public sealed class ListCommand : Command<ListCommand.Settings>
             assets,
             filtered
                 ? "No assets match these filters. Run 'agentpack list' without filters to see everything."
-                : "The catalog is empty. Scaffold an asset with 'agentpack new' or add a source with 'agentpack source add'.",
+                : "The catalog is empty. Propose an asset with 'agentpack submit <kind> <path-or-url-or-id>'.",
             "agentpack list <kind>");
         return 0;
     }
@@ -112,7 +111,7 @@ public sealed class ListCommand : Command<ListCommand.Settings>
     }
 }
 
-public sealed class FindCommand : Command<FindCommand.Settings>
+public sealed class SearchCommand : Command<SearchCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
@@ -144,11 +143,9 @@ public sealed class FindCommand : Command<FindCommand.Settings>
         AssetKind? kind = null;
         if (!string.IsNullOrWhiteSpace(settings.Kind)) kind = AssetKinds.Parse(settings.Kind);
 
-        var groups = settings.Groups
-            .SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var groups = CommandHelpers.SplitList(settings.Groups)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var providers = settings.Providers
-            .SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        var providers = CommandHelpers.SplitList(settings.Providers)
             .Select(ProviderNames.Parse)
             .ToHashSet();
 
@@ -165,7 +162,7 @@ public sealed class FindCommand : Command<FindCommand.Settings>
         ListCommand.RenderAssets(
             assets,
             $"No approved assets match '{settings.Query}'. Run 'agentpack list' to browse the catalog.",
-            "agentpack find <query>");
+            "agentpack search <query>");
         return ExitCodes.Ok;
     }
 
@@ -237,13 +234,13 @@ public sealed class StatusCommand : Command<StatusCommand.Settings>
                     entry.Version, latest, entry.Pinned ? "yes" : "no", state
                 };
             }),
-            emptyMessage: $"Nothing installed in {scopeName} scope yet. Run 'agentpack add' to pick assets.",
+            emptyMessage: $"Nothing installed in {scopeName} scope yet. Run 'agentpack install' to pick assets.",
             markupColumns: [6]);
 
         if (lockFile.Entries.Count > 0)
         {
             var summary = $"{lockFile.Entries.Count} installed ({scopeName} scope)";
-            if (updates > 0) summary += $" — {updates} update{(updates == 1 ? "" : "s")} available, run 'agentpack upgrade'";
+            if (updates > 0) summary += $" — {updates} update{(updates == 1 ? "" : "s")} available, run 'agentpack update'";
             if (removed > 0) summary += $" — {removed} no longer in the catalog";
             Output.Info(summary + ".");
         }
@@ -303,18 +300,18 @@ public sealed class DoctorCommand : Command
         var session = new CliSession();
         var detected = ProviderRegistry.Detect(session.Paths.WorkingDirectory);
         var rootCatalog = Path.Combine(session.Paths.WorkingDirectory, "catalog.yaml");
-        var overlayCatalog = Path.Combine(session.Paths.WorkingDirectory, ".agentpack", "catalog.yaml");
         var config = session.Sources.LoadConfig();
-        var configuredSource = config.Sources.FirstOrDefault();
+        var configuredSource = config.Catalog;
         var environmentSource = Environment.GetEnvironmentVariable("AGENTPACK_CATALOG_URL");
+        var effectiveSource = session.Sources.EffectiveSource();
         var catalogMode = File.Exists(rootCatalog)
-            ? "standalone root catalog"
+            ? "catalog repository checkout"
             : configuredSource is not null
-                ? $"registered source ({configuredSource.Name})"
+                ? $"selected catalog ({configuredSource.Name})"
                 : !string.IsNullOrWhiteSpace(environmentSource)
-                    ? "environment source (AGENTPACK_CATALOG_URL)"
-                    : File.Exists(overlayCatalog)
-                        ? "standalone project catalog"
+                    ? "organization catalog (AGENTPACK_CATALOG_URL)"
+                    : effectiveSource is not null
+                        ? $"built-in catalog ({effectiveSource.Name})"
                         : "unconfigured";
         var catalogLocation = File.Exists(rootCatalog)
             ? rootCatalog
@@ -322,9 +319,7 @@ public sealed class DoctorCommand : Command
                 ? configuredSource.Url
                 : !string.IsNullOrWhiteSpace(environmentSource)
                     ? environmentSource
-                    : File.Exists(overlayCatalog)
-                        ? overlayCatalog
-                        : "(none)";
+                    : effectiveSource?.Url ?? "(none)";
         Output.Table(
             ["Check", "Value"],
             new[]
@@ -336,13 +331,12 @@ public sealed class DoctorCommand : Command
                 ["Detected providers", detected.Count > 0 ? string.Join(", ", detected.Select(ProviderNames.Display)) : "(none)"],
                 ["Catalog", catalogMode],
                 ["Catalog location", catalogLocation],
-                ["Project overlay", File.Exists(overlayCatalog) && !Path.GetFullPath(overlayCatalog).Equals(Path.GetFullPath(rootCatalog), StringComparison.OrdinalIgnoreCase) ? overlayCatalog : "(none)"],
-                ["Catalog sources", config.Sources.Count.ToString()],
+                ["Catalog selection", configuredSource is null ? "built-in or environment" : "explicit"],
                 ["Default scope", CliSession.IsGitRepo(session.Paths.WorkingDirectory) ? "project" : "user"]
             });
         if (catalogMode == "unconfigured")
         {
-            Output.Info("Next: run 'agentpack init --overlay' for this project or 'agentpack source add <name> <git-url>' for a shared catalog.");
+            Output.Info("Next: select a catalog with 'agentpack catalog use <git-url>'.");
         }
 
         return 0;

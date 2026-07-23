@@ -4,7 +4,7 @@ The org catalog is the trusted source of truth. Everything below assumes the cat
 
 ## The review gate
 
-- **All changes are PRs.** The CLI (`agentpack new`, `agentpack import`) scaffolds; a human approves; CI validates. Nothing installs on developer machines that didn't pass this gate.
+- **All changes are PRs.** `agentpack submit` creates a proposal branch, validates it, and opens a PR; it never pushes to `main`. Read-only contributors submit through an automatically managed fork. Humans approve and CI validates.
 - **CODEOWNERS routes review:**
 
   ```text
@@ -15,7 +15,7 @@ The org catalog is the trusted source of truth. Everything below assumes the cat
   Hooks execute code on developer machines; external source changes pull third-party code. Both go to security.
 
 - **CI on every PR:** `agentpack catalog validate` + `agentpack catalog lock --check` + `agentpack catalog verify-external`. A PR cannot merge with broken references, stale checksums, or unpinned external refs.
-- **Trace every third-party asset:** the repository URL and pinned ref identify its origin and are shown again when a consumer runs `agentpack add`. A missing optional license produces a review warning because redistribution may not be allowed.
+- **Trace every third-party asset:** the repository URL and pinned ref identify its origin and are shown again when a consumer runs `agentpack install`. A missing optional license produces a review warning because redistribution may not be allowed.
 
 ## Asset lifecycle
 
@@ -26,9 +26,9 @@ The org catalog is the trusted source of truth. Everything below assumes the cat
 | `deprecated` | being retired | installs with a warning |
 | `blocked` | banned (security/compliance) | refuses; explicit request is an error |
 
-- Version bumps (semver) on every content change; consumers pick them up via `agentpack outdated` / `upgrade`.
+- Version bumps (semver) on every content change; consumers pick them up via `agentpack outdated` / `update`.
 - Group retirement: `status: deprecated` + `replacedBy` + `removeAfter` — enforced by validation.
-- Emergency kill switch: set `status: blocked` and merge; installs stop immediately, `upgrade` warns existing users.
+- Emergency kill switch: set `status: blocked` and merge; new installs stop and `update` warns existing users after their catalog refreshes.
 
 ## Supply-chain posture
 
@@ -44,7 +44,7 @@ The org catalog is the trusted source of truth. Everything below assumes the cat
 
 - **A catalog source is code execution.** Hooks are scripts the AI tools run on every matching event, and
   MCP entries are command lines the tools launch. agentpack validates and pins content, but it does not
-  sandbox it: anyone who can merge to a registered catalog can run code on every consuming machine. Guard
+  sandbox it: anyone who can merge to the active catalog can run code on every consuming machine. Guard
   the catalog repo (branch protection, CODEOWNERS above) with the same rigor as a deploy pipeline.
 - **Merges are transactional per file; tree copies are not.** Shared config files (settings.json,
   mcp.json, config.toml) are written atomically. Copy-tree installs (skills, instructions, prompts,

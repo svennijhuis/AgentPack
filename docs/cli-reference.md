@@ -1,280 +1,215 @@
 # AgentPack CLI Reference
 
-Use `agentpack --help` for the complete generated command list, `agentpack help <command>` for one command, or run `agentpack` with no arguments for a task-oriented introduction.
+AgentPack uses one active catalog. Assets are installed either for the current user or into the current repository. New assets enter the catalog through pull requests created by `submit`.
 
-## Conventions and defaults
-
-- Provider detection uses repository markers for Claude Code, Codex, GitHub Copilot, and Cursor. Override it with `--claude`, `--codex`, `--copilot`, `--cursor`, or repeatable `-p|--provider <name>`.
-- Scope defaults to project inside a git repository and user outside one. Override it with `--project` or `--user`.
-- `--yes` disables confirmations for scripts and CI. `--force` overwrites local changes; `--keep-local` preserves them. `--force` and `--keep-local` cannot be combined.
-- Repeatable group and provider options also accept comma-separated values.
-- Familiar aliases are `install` for `add`, `ls` for `list`, `search` for `find`, `uninstall` for `remove`, and `update` for `upgrade`.
-
-## Getting started and discovery
-
-### `agentpack init [--overlay]`
-
-Initialize a catalog without overwriting an existing one.
-
-- Default: create `catalog.yaml` for a dedicated shared catalog.
-- `--overlay`: create `.agentpack/catalog.yaml` for a personal project or service repository.
+## Basics
 
 ```bash
-agentpack init
-agentpack init --overlay
+agentpack                  # onboarding screen with the common commands
+agentpack --help           # every command
+agentpack help <command>   # one command in detail, including nested ones
+agentpack --version        # tool version
 ```
+
+## Common options
+
+- `--user`: install or manage assets for the current user on this device.
+- `--project`: install or manage assets in the current repository.
+- `--claude`, `--codex`, `--copilot`, `--cursor`: explicitly select providers.
+- `-p|--provider <name>`: repeatable provider selection.
+- `-g|--group <name>`: repeatable, comma-separated group selection.
+- `-y|--yes`: skip confirmation prompts.
+- `--force`: replace a locally modified managed install after backing it up.
+- `--keep-local`: preserve a locally modified install.
+
+Without a scope flag, AgentPack chooses project scope inside a Git repository and user scope elsewhere. Without provider flags, it detects providers from the directory the install writes to — your home directory for `--user`, the repository for `--project` — and falls back to the other one before reporting that it found none.
+
+## Discover
+
+### `agentpack search <query> [options]`
+
+Search IDs, names, descriptions, kinds, groups, and external repository metadata.
+
+```bash
+agentpack search "writing"
+agentpack search review --kind skills --group backend --provider codex
+```
+
+Filter with `-k|--kind`, `-g|--group`, and `-p|--provider`.
 
 ### `agentpack list [kind] [options]`
 
-List approved assets in the effective catalog. Alias: `agentpack ls`.
-
-- `[kind]`: `skills`, `hooks`, `mcp`, `tools`, `instructions`, `rules`, `prompts`, `templates`, `agents`, or `all`.
-- `-g|--group <group>`: filter by group.
-- `-p|--provider <provider>`: filter by provider.
+Browse approved catalog assets. Filter with `--group` or `--provider`.
 
 ```bash
 agentpack list
-agentpack list skills --group backend --provider codex
-```
-
-### `agentpack find <query> [options]`
-
-Search only the approved effective catalog. Aliases: `agentpack search`.
-
-- `<query>`: one or more words; every word must match the combined id, name, description, kind, or groups.
-- `-k|--kind <kind>`: filter by kind.
-- `-g|--group <group>`: filter by group.
-- `-p|--provider <provider>`: filter by provider.
-
-```bash
-agentpack find "service setup"
-agentpack search review --kind skills --group backend --provider codex
+agentpack list skills --group review
 ```
 
 ### `agentpack groups`
 
-List catalog group ids, names, status, replacements, and removal dates.
+List the catalog's discovery groups and lifecycle status.
+
+## Install and manage
+
+### `agentpack install [kind] [id...] [options]`
+
+Install approved assets. With no target in an interactive terminal, opens a picker.
 
 ```bash
-agentpack groups
+agentpack install grill-me --user
+agentpack install secret-scan --project
+agentpack install skills --codex --project
+agentpack install --group security --project
 ```
 
-## Installing and maintaining assets
+Pass IDs, a kind, or `-g|--group <name>` to install everything in a group.
 
-### `agentpack add [kind] [id...] [options]`
-
-Install assets. Alias: `agentpack install`. With no targets in an interactive terminal, opens the approved-asset picker. A kind or group filters the picker; explicit ids install directly.
-
-- `-g|--group <group>`: select a group.
-- Provider and scope options follow the global conventions above.
-- `-y|--yes`, `--force`, and `--keep-local` control non-interactive and drift behavior.
+Add `--dry-run` to show the catalog, scope, providers, actions, and exact destinations without writing files:
 
 ```bash
-agentpack add
-agentpack add skills --claude
-agentpack install grill-me secret-scan --project --yes
+agentpack install grill-me --codex --user --dry-run
 ```
 
-### `agentpack plan [kind] [id...] [options]`
-
-Use the same selection and targeting options as `add`, but show the install plan without changing files.
-
-```bash
-agentpack plan skills --codex --project
-agentpack plan --group security --claude
-```
+Remote catalogs refresh before an install. If the network is unavailable and a cache exists, AgentPack warns and uses that cache.
 
 ### `agentpack status [--user|--project]`
 
-Show installed versions, latest catalog versions, pins, and update state for one scope.
+Show installed versions, available catalog versions, pins, and state.
 
-```bash
-agentpack status --project
-agentpack status --user
-```
+### `agentpack update [kind] [id...] [options]`
+
+Refresh the catalog and update installed assets. With no target in an interactive terminal, opens a picker with outdated assets selected.
 
 ### `agentpack outdated [kind] [id...] [options]`
 
-Report available upgrades without applying them. Accepts kind/id, provider, and scope filters.
-
-```bash
-agentpack outdated
-agentpack outdated skills --codex --project
-```
-
-### `agentpack upgrade [kind] [id...] [options]`
-
-Upgrade installed assets to catalog versions. Alias: `agentpack update`. With no targets in an interactive terminal, opens a picker with outdated assets preselected.
-
-```bash
-agentpack upgrade
-agentpack update grill-me --project --yes
-```
+Report updates without applying them.
 
 ### `agentpack remove <id...> [options]`
 
-Remove installed assets and their managed shared-config fragments. Alias: `agentpack uninstall`.
-
-- Targets may start with a kind or `all`.
-- Provider and scope options limit which installs are removed.
-
-```bash
-agentpack remove grill-me --project
-agentpack uninstall skills old-skill --codex
-agentpack remove all --user
-```
+Remove managed files and managed fragments from shared provider configuration.
 
 ### `agentpack diff <id> [--user|--project]`
 
-Compare an installed asset with AgentPack's recorded fragment or checksum and report clean, missing, or locally modified state.
-
-```bash
-agentpack diff grill-me --project
-```
+Report whether an installed asset is clean, missing, or locally modified.
 
 ### `agentpack pin <id> [--user|--project]`
 
-Keep an installed asset at its current version during upgrades.
-
-```bash
-agentpack pin grill-me --project
-```
+Exclude an installed asset from updates.
 
 ### `agentpack unpin <id> [--user|--project]`
 
-Allow a pinned asset to be upgraded again.
+Allow a pinned asset to update again.
+
+## Submit to the catalog
+
+### `agentpack submit <kind> <path-or-url-or-id> [options]`
+
+Propose a local or external asset through a catalog pull request.
 
 ```bash
-agentpack unpin grill-me --project
+agentpack submit skill ./my-skill
+agentpack submit hook ./secret-scan --command scripts/check.sh --group security
+agentpack submit mcp github --command github-mcp-server --env GITHUB_TOKEN
+agentpack submit skill https://github.com/acme/skills/tree/main/skills/review
+agentpack submit skill ./my-skill --update
 ```
 
-## Authoring assets
+Options:
 
-### `agentpack new <kind> <id> [options]`
-
-Scaffold `agentpack.yaml` and kind-appropriate content.
-
-- `--overlay`: write under `.agentpack/assets/` and create the minimal overlay catalog if needed.
+- `--id <id>`: override the ID derived from the path or URL.
 - `--name <name>` and `--description <text>`: set display metadata.
-- `-g|--group <group>` and `-p|--provider <provider>`: set catalog metadata.
-- `--owner <team>`: record an optional owner.
-- `--force`: overwrite an existing manifest.
+- `--update`: propose a new revision of an asset already in the catalog instead of adding one.
+- `--version <semver>`: defaults to `1.0.0` for a new asset, and to the next patch of the catalog version when updating. It must always be higher than the version already in the catalog.
+- `--ref <commit-or-tag>`: select an immutable external revision; when omitted, AgentPack pins the latest current commit.
+- `--license <spdx>`: record an external asset's license when known.
+- `-g|--group` and `-p|--provider`: set catalog metadata.
+- `--command <value>`: hook entry file or stdio MCP executable.
+- `--trigger`, `--tool`, `--timeout`: configure a hook; the default trigger is `preToolUse` and timeout is 30 seconds.
+- `--url`, `--transport`: configure an HTTP/SSE MCP endpoint; transport is normally inferred.
+- `--arg <value>`: repeatable stdio MCP argument.
+- `--env <name>`: repeatable required environment-variable name for an MCP process.
+- `--header-env <header=env>`: repeatable environment-backed remote MCP header.
+- `--yes`: accept the preview without an interactive publishing confirmation.
+- `--draft`: open a draft pull request.
+- `--prepare-only`: create and commit the proposal branch locally without pushing.
+
+Skills can be folders and must contain `SKILL.md`. Hooks can be one script or a folder; ambiguous folders require `--command`. MCP servers use typed command/URL options rather than arbitrary folder copying. Tools and templates are not accepted until a supported provider can install them safely.
+
+Before cloning or publishing, local submissions display the exact included files. Common VCS/build/cache paths are ignored; symlinks, credential-like files, private keys, and oversized folders are rejected. Automatic submission requires an authenticated GitHub CLI. Contributors with read-only catalog access automatically submit through their fork. The command never commits or pushes to the catalog's default branch.
+
+## Catalog
+
+### `agentpack catalog status`
+
+Show the active catalog repository, branch, revision, last refresh, and local cache.
+
+Inside a catalog checkout — any directory with a `catalog.yaml` — that checkout takes precedence over the configured catalog, and `catalog status` reports its location and revision instead.
+
+### `agentpack catalog sync`
+
+Force an immediate catalog refresh. Install and update already refresh automatically.
+
+### `agentpack catalog use <git-url> [options]`
+
+Replace the built-in official catalog with another approved catalog and sync it immediately.
 
 ```bash
-agentpack new skills service-setup --group backend
-agentpack new prompts release-check --overlay
+agentpack catalog use https://github.com/acme/ai-catalog.git --name company
 ```
 
-### `agentpack import <url[@ref]> [options]`
+Use `--branch <branch>` when the catalog does not use `main`.
 
-Scaffold a catalog manifest for reviewed external content. A full commit SHA or immutable tag is required; moving branches are rejected.
-
-- `--ref <ref>`: provide the reviewed ref separately.
-- `--kind <kind>`: defaults to `skills`.
-- `--id <id>`: defaults to the final URL path segment.
-- `--license <license>`: optionally record the upstream license. When omitted, import continues and catalog validation emits a review warning.
-- Group, provider, and force options match `new`.
-
-```bash
-agentpack import https://github.com/example-org/agent-assets/tree/main/skills/code-review@<commit-sha>
-```
-
-## Profiles
-
-### `agentpack profile list`
-
-List defined team profiles.
-
-```bash
-agentpack profile list
-```
-
-### `agentpack profile plan <id> [options]`
-
-Preview everything selected by a profile. Accepts provider and scope options.
-
-```bash
-agentpack profile plan backend --project
-```
-
-### `agentpack profile apply <id> [options]`
-
-Install everything selected by a profile. Accepts provider, scope, confirmation, and drift options.
-
-```bash
-agentpack profile apply backend --project --yes
-```
-
-## Catalog maintenance
-
-### `agentpack catalog validate [--no-checksums]`
-
-Validate manifests, references, policy, and—unless disabled—content checksums.
+### Catalog CI and recovery commands
 
 ```bash
 agentpack catalog validate
-agentpack catalog validate --no-checksums
-```
-
-### `agentpack catalog lock [--check] [--no-fetch]`
-
-Generate `catalog.lock.yaml`. `--check` compares without writing and is intended for CI; `--no-fetch` skips external fetches.
-
-```bash
+agentpack catalog validate --no-checksums   # structure only, skip content hashing
 agentpack catalog lock
-agentpack catalog lock --check
-```
-
-### `agentpack catalog verify-external`
-
-Fetch every external asset at its pinned ref and verify it against the catalog checksum.
-
-```bash
+agentpack catalog lock --check              # fail if the lockfile is out of date
+agentpack catalog lock --no-fetch           # skip external checksums (no network)
 agentpack catalog verify-external
 ```
 
-## Catalog sources
+Contributors do not normally run these commands; `submit` performs them in the background. They remain public for CI and catalog incident recovery.
 
-### `agentpack source add <name> <git-url> [--branch <branch>]`
+## Environment variables
 
-Register a shared catalog repository. The branch defaults to `main`; first use clones it automatically.
+| Variable | Effect |
+|---|---|
+| `AGENTPACK_CATALOG_URL` | Organization catalog, used when no catalog was selected with `catalog use` |
+| `AGENTPACK_CATALOG_BRANCH` | Branch for `AGENTPACK_CATALOG_URL`. Default: `main` |
+| `AGENTPACK_DEFAULT_CATALOG_URL` | Replaces the built-in official catalog URL |
+| `AGENTPACK_DISABLE_DEFAULT_CATALOG` | `1` removes the built-in catalog, for hermetic or offline environments |
+| `AGENTPACK_HOME` | Relocates AgentPack's own state (config, caches, lockfile). Never moves `.claude/`, `.codex/`, … |
+| `AGENTPACK_DEBUG` | `1` includes a stack trace for internal failures |
 
-```bash
-agentpack source add org https://github.com/acme/ai-catalog.git
-agentpack source add platform ssh://git/acme/catalog.git --branch stable
-```
+Catalog precedence: an explicit path, then a `catalog.yaml` in the working directory, then the catalog selected with `catalog use`, then `AGENTPACK_CATALOG_URL`, then the built-in official catalog.
 
-### `agentpack source list`
-
-List registered source names, branches, and URLs.
-
-```bash
-agentpack source list
-```
-
-### `agentpack source sync`
-
-Clone or fast-forward every registered source immediately.
+## Profiles
 
 ```bash
-agentpack source sync
+agentpack profile list
+agentpack profile plan backend --project
+agentpack profile apply backend --project --yes
 ```
+
+Profiles select a reviewed set of catalog assets and providers.
 
 ## Diagnostics
 
 ### `agentpack doctor`
 
-Show the CLI version, working directory, git status, detected providers, catalog mode and location, project overlay, registered source count, and default install scope. It does not clone or modify catalog state.
+Show the CLI version, working directory, detected providers, active catalog, catalog selection, and default install scope. It does not download or modify the catalog.
 
-```bash
-agentpack doctor
-```
+## Exit codes
 
-## General options and exit codes
+| Code | Meaning |
+|---:|---|
+| `0` | Success |
+| `1` | Invalid input or missing prerequisite |
+| `2` | Catalog validation failure |
+| `3` | Drift or conflict |
+| `70` | Unexpected internal error |
 
-```text
--h, --help       generated help
--v, --version    installed AgentPack version
-```
-
-Exit codes are `0` success, `1` user input error, `2` catalog validation failure, `3` drift or conflict, and `70` unexpected internal error. Set `AGENTPACK_DEBUG=1` to include a stack trace for internal failures.
+Set `AGENTPACK_DEBUG=1` to include a stack trace for internal failures.

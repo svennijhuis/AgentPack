@@ -10,7 +10,7 @@
 
 ## Long lists
 
-- **Interactive picker (`add`/`upgrade` with no args).** Small catalogs get a single grouped checklist (page size adapts to the terminal height). Larger catalogs get a category browser: a searchable menu of kinds with counts ("skills (12)"), plus "everything", "find one asset" (type-to-search across all assets; picking one toggles it in the cart), "Done", and "Cancel". Picking a kind opens the checklist for just that kind; selections go into a cart that survives switching kinds ("skills (3 of 12 selected)", "Done — 5 selected"). "Done" applies the cart. Upgrade preselects every outdated entry in both modes.
+- **Interactive picker (`install`/`update` with no args).** Small catalogs get a single grouped checklist (page size adapts to the terminal height). Larger catalogs get a category browser: a searchable menu of kinds with counts ("skills (12)"), plus "everything", "find one asset" (type-to-search across all assets; picking one toggles it in the cart), "Done", and "Cancel". Picking a kind opens the checklist for just that kind; selections go into a cart that survives switching kinds ("skills (3 of 12 selected)", "Done — 5 selected"). "Done" applies the cart. Update preselects every outdated entry in both modes.
 - **Plan output.** Rows that need no work (up to date, pinned) are hidden once there are more than five, replaced by one summary line; a "To do:" line summarizes the actionable rows of a large plan. Skipped provider/kind combinations that share a reason are grouped into one line.
 - **Apply output.** Per-row "already up to date"/"pinned" lines collapse into counts past the same threshold, and large runs end with a one-line summary ("Done: 3 installed, 1 updated").
 - **`list`/`status`.** `list` hides the Status and Source columns when every row would show the default, truncates descriptions to the terminal width, and prints a count-plus-filter hint footer for 10+ assets. `status` colors actionable states, summarizes updates in a footer, and explains the next step when nothing is installed yet.
@@ -18,19 +18,22 @@
 ## Command surface
 
 ```text
-agentpack init [--overlay]
-agentpack find <query> [--kind k] [-g group] [-p provider]
-agentpack add [kind] [id...] [-g group] [--claude|--codex|--copilot|--cursor|-p name]
+agentpack search <query> [--kind k] [-g group] [-p provider]
+agentpack install [kind] [id...] [-g group] [--claude|--codex|--copilot|--cursor|-p name]
               [--user|--project] [--yes] [--force|--keep-local]
-agentpack plan ...                          # add, dry-run
-agentpack upgrade [kind] [id...] / outdated
+              [--dry-run]
+agentpack update [kind] [id...] / outdated
 agentpack remove <id...> / status / diff <id> / pin <id> / unpin <id>
-agentpack new <kind> <id> [--group g] [--provider p] [--name n] [--description d]
-agentpack import <url[@ref]> [--ref sha] [--kind k] [--id i] [--license L]
-agentpack profile list|plan|apply <id>
-agentpack catalog validate | lock [--check|--no-fetch] | verify-external
-agentpack source add|list|sync
+agentpack submit <kind> <path-or-url-or-id> [--id i] [--version v] [--ref sha]
+              [hook: --command file --trigger event --tool matcher --timeout seconds]
+              [mcp: --command executable|--url endpoint --arg value --env name --header-env header=name]
+              [--update] [--yes] [--draft|--prepare-only]
+agentpack profile list
+agentpack profile plan|apply <id>
+agentpack catalog use|status|sync
+agentpack catalog validate [--no-checksums] | lock [--check|--no-fetch] | verify-external
 agentpack groups / doctor
+
 ```
 
 Running `agentpack` without arguments shows task-oriented onboarding. Generated exhaustive help remains available through `agentpack --help`, `agentpack help <command>`, and nested forms such as `agentpack help profile apply`.
@@ -39,8 +42,10 @@ Defaults chosen for the common case:
 
 - **Providers**: detected from the repo; flags override.
 - **Scope**: project inside a git repo, user otherwise; `--user`/`--project` override.
-- **`add` with no args**: interactive multi-select of everything installable — including hooks and MCP — grouped by kind.
-- **`upgrade` with no args**: interactive multi-select of outdated entries, preselected.
+- **Catalog**: the built-in official catalog is used unless the user or organization selects another one.
+- **`install` with no args**: interactive multi-select of everything installable — including hooks and MCP — grouped by kind.
+- **`update` with no args**: interactive multi-select of outdated entries, preselected.
+- **`submit`**: previews and validates the complete proposal before cloning, defaults publishing confirmation to “no,” then creates a proposal branch and PR; never writes to the default branch. Read-only contributors automatically use a fork. A URL without `--ref` resolves to the latest current commit and stores the resulting immutable SHA.
 
 ## Exit codes
 

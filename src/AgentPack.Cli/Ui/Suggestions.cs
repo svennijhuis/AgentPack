@@ -7,16 +7,42 @@ public static class Suggestions
 {
     private static readonly string[] CommandNames =
     [
-        "help", "init", "list", "ls", "find", "search", "groups", "new", "import", "add", "install",
-        "remove", "uninstall", "upgrade", "update", "outdated", "plan", "status", "diff", "pin", "unpin",
-        "doctor", "catalog", "profile", "source"
+        "help", "list", "search", "groups", "install", "submit", "remove", "update", "outdated",
+        "status", "diff", "pin", "unpin",
+        "doctor", "catalog", "profile"
     ];
+
+    /// <summary>
+    /// Commands that existed before the CLI was renamed. Typing the old name is not a
+    /// typo, so it must map to its replacement directly — nearest-match would send
+    /// 'find' to 'pin' and leave 'add' and 'upgrade' with no hint at all.
+    /// </summary>
+    private static readonly Dictionary<string, string> Renamed = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["add"] = "install",
+        ["ls"] = "list",
+        ["find"] = "search",
+        ["uninstall"] = "remove",
+        ["upgrade"] = "update",
+        ["plan"] = "install --dry-run",
+        ["init"] = "submit",
+        ["new"] = "submit",
+        ["import"] = "submit",
+        ["source"] = "catalog use"
+    };
 
     public static string? ForParseError(string message)
     {
         var match = Regex.Match(message, "'(?<token>[^']+)'");
         if (!match.Success) return null;
-        return Nearest(match.Groups["token"].Value, CommandNames) is { } suggestion
+        var token = match.Groups["token"].Value;
+
+        if (Renamed.TryGetValue(token, out var replacement))
+        {
+            return $"'agentpack {token}' is now 'agentpack {replacement}'.";
+        }
+
+        return Nearest(token, CommandNames) is { } suggestion
             ? $"Did you mean 'agentpack {suggestion}'?"
             : null;
     }

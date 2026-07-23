@@ -11,10 +11,13 @@ public sealed class CatalogDto
 {
     public string SchemaVersion { get; set; } = "1";
     public string CatalogVersion { get; set; } = "0.1.0";
+    public string? MinimumAgentPackVersion { get; set; }
     public List<GroupDto> Groups { get; set; } = [];
     public List<AssetDto> Assets { get; set; } = [];
-    public List<BundleDto> Bundles { get; set; } = [];
     public List<ProfileDto> Profiles { get; set; } = [];
+
+    /// <summary>Removed. Bound only so an old catalog gets a clear error instead of losing assets silently.</summary>
+    public object? Bundles { get; set; }
 }
 
 public sealed class GroupDto
@@ -26,24 +29,16 @@ public sealed class GroupDto
     public string? RemoveAfter { get; set; }
 }
 
-/// <summary>Bundles are removed; kept in the DTO so old catalogs can be migrated with a warning.</summary>
-public sealed class BundleDto
-{
-    public string Id { get; set; } = "";
-    public string Name { get; set; } = "";
-    public string Version { get; set; } = "1.0.0";
-    public List<string> Assets { get; set; } = [];
-    public List<string> Groups { get; set; } = [];
-}
-
 public sealed class ProfileDto
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public List<string> Providers { get; set; } = [];
     public List<string> Groups { get; set; } = [];
-    public List<string> Bundles { get; set; } = [];
     public List<string> Assets { get; set; } = [];
+
+    /// <summary>Removed. Bound only so an old profile gets a clear error instead of losing assets silently.</summary>
+    public object? Bundles { get; set; }
 }
 
 public class AssetDto

@@ -1,5 +1,6 @@
 schemaVersion: "1"
 catalogVersion: 0.2.0
+minimumAgentPackVersion: 0.0.1
 groups:
   - id: engineering
     name: Engineering

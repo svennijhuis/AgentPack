@@ -7,6 +7,10 @@ namespace AgentPack.Core;
 
 public static class CatalogLoader
 {
+    // Unknown keys are ignored on purpose: a catalog written by a newer agentpack must
+    // still load on an older one, otherwise minimumAgentPackVersion could never report
+    // its upgrade message and a single contributor's stray key would break every command.
+    // Keys that were genuinely removed are rejected explicitly in CatalogMapper instead.
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .WithTypeConverter(new SourceDtoConverter())
@@ -25,7 +29,7 @@ public static class CatalogLoader
         {
             throw new AgentPackException(
                 $"Catalog file was not found: {catalogPath}",
-                "Run from a catalog repo, or configure one with 'agentpack source add <name> <git-url>'.");
+                "Run from a catalog repo, or select one with 'agentpack catalog use <git-url>'.");
         }
 
         return Parse<CatalogDto>(catalogPath) ?? new CatalogDto();

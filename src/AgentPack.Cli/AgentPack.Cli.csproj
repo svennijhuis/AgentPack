@@ -15,7 +15,7 @@
     <PackageId>AgentPack</PackageId>
     <Version>0.0.1</Version>
     <Authors>AgentPack</Authors>
-    <Description>Organization AI asset package manager for skills, hooks, MCP, tools, instructions, rules, prompts, bundles, and profiles.</Description>
+    <Description>Catalog-first installer for reviewed AI skills, hooks, MCP servers, instructions, prompts, rules, and agents.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/svennijhuis/AgentPack</PackageProjectUrl>

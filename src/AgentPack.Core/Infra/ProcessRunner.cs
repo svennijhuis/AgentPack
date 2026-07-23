@@ -64,4 +64,11 @@ public static class ProcessRunner
 
         return value;
     }
+
+    /// <summary>
+    /// First meaningful line of a captured stderr, for use in a product error message.
+    /// Git and gh put the actionable sentence first and diagnostics after it.
+    /// </summary>
+    public static string FirstLine(string text) =>
+        text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
 }

@@ -1,0 +1,8 @@
+# Catalog changes always require an explicit owner review. GitHub branch
+# protection/rulesets must enable "Require review from Code Owners" on main.
+/catalog.yaml @svennijhuis
+/catalog.lock.yaml @svennijhuis
+/assets/ @svennijhuis
+
+# Hooks execute code on developer machines and deserve the tightest review path.
+/assets/hooks/ @svennijhuis

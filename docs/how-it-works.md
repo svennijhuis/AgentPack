@@ -36,9 +36,9 @@ flowchart LR
     CLI --> CL & CX & CP & CU
 ```
 
-## Installing: `agentpack add`
+## Installing: `agentpack install`
 
-Planning is read-only and network-free. Applying merges into shared config files without touching what the user already has, records everything in a lockfile, and never overwrites local edits silently.
+Planning is read-only for installed files. Install and update refresh the catalog first (with an offline cache fallback), then applying merges into shared config files, records everything in a lockfile, and never overwrites local edits silently.
 
 ```mermaid
 sequenceDiagram
@@ -48,7 +48,8 @@ sequenceDiagram
     participant Lock as .agentpack/lock.json
     participant Prov as Provider files
 
-    Dev->>CLI: agentpack add
+    Dev->>CLI: agentpack install --user|--project
+    CLI->>Cat: refresh active catalog (cached fallback if offline)
     CLI->>Cat: load catalog + infer manifests
     CLI-->>Dev: interactive checklist (skills, hooks, mcp)
     Dev-->>CLI: selection
@@ -66,14 +67,19 @@ sequenceDiagram
     CLI-->>Dev: results + follow-up steps (env vars to set, files to commit)
 ```
 
-## Contributing: everything is a PR
+## Contributing: `submit` always creates a PR
 
 The CLI scaffolds, humans review, CI validates. Nothing reaches developer machines without passing this gate.
 
 ```mermaid
 flowchart LR
-    A["agentpack new skills grill-me<br/>or<br/>agentpack import url@sha"] --> B["edit content/<br/>commit on branch"]
-    B --> PR["Pull request"]
+    A["agentpack submit<br/>path, URL, or MCP id"] --> P["preview exact files/config<br/>reject unsafe input"]
+    P --> B["confirm, then pin external ref<br/>or copy reviewed content"]
+    B --> C["create branch + lock + validate + commit"]
+    C --> F{"Catalog write access?"}
+    F -->|yes| PR["Push proposal branch + open PR"]
+    F -->|no| FK["Push to contributor fork + open PR"]
+    FK --> PR
 
     subgraph ci["Catalog CI"]
         V["agentpack catalog validate"]
@@ -85,12 +91,12 @@ flowchart LR
     ci -->|all green| R["CODEOWNERS review<br/>hooks & external → security team"]
     ci -->|red| B
     R -->|approve + merge| M["main = new catalog version"]
-    M --> U["developers see it in<br/>agentpack list / outdated / upgrade"]
+    M --> U["developers see it in<br/>agentpack list / outdated / update"]
 ```
 
 ## External assets: pinned, hashed, re-reviewed
 
-AgentPack never follows upstream branches. A ref bump is a PR, so third-party changes always get human eyes.
+AgentPack follows an upstream branch only once during `submit`, immediately resolves it to a commit SHA, and stores that immutable pin. Installs never follow the branch. A ref bump is a new PR, so third-party changes always get human eyes.
 
 ```mermaid
 sequenceDiagram
@@ -100,13 +106,13 @@ sequenceDiagram
     participant Up as Upstream repo
     actor Dev as Developer
 
-    Author->>Repo: import url@SHA (reviewed upstream at that SHA)
+    Author->>Repo: submit URL (resolved to reviewed SHA)
     Repo->>CI: PR opened
     CI->>Up: fetch at pinned SHA
     CI->>CI: hash content → catalog.lock.yaml
     CI-->>Repo: merge when green + approved
 
-    Dev->>Up: agentpack add → clone/fetch at SHA (cached in ~/.agentpack/cache)
+    Dev->>Up: agentpack install → clone/fetch at SHA (cached in ~/.agentpack/cache)
     Dev->>Dev: hash fetched content
     alt hash matches catalog.lock.yaml
         Dev->>Dev: install
@@ -122,16 +128,16 @@ The lockfile stores a checksum of what was installed. Every plan compares disk a
 ```mermaid
 stateDiagram-v2
     [*] --> Available: in catalog, not installed
-    Available --> Installed: add
+    Available --> Installed: install
     Installed --> UpdateAvailable: catalog version bumped
     Installed --> LocalChanges: user edits installed copy
     Installed --> Missing: file deleted on disk
-    UpdateAvailable --> Installed: upgrade
+    UpdateAvailable --> Installed: update
     UpdateAvailable --> Pinned: pin
     Pinned --> UpdateAvailable: unpin
     LocalChanges --> Installed: overwrite (backup kept)
     LocalChanges --> LocalChanges: keep local
-    Missing --> Installed: add (reinstall)
+    Missing --> Installed: install (reinstall)
     Installed --> [*]: remove (backup kept)
 ```
 

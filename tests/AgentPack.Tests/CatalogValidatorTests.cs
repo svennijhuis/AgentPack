@@ -108,7 +108,7 @@ public class CatalogValidatorTests
         {
             Groups = [new GroupDefinition { Id = "api", Name = "API", Status = GroupStatus.Deprecated }]
         };
-        var loaded = new LoadedCatalog(catalog, Path.Combine(temp.Path, "catalog.yaml"), [temp.Path], new CatalogLockFile(), []);
+        var loaded = new LoadedCatalog(catalog, Path.Combine(temp.Path, "catalog.yaml"), temp.Path, new CatalogLockFile(), []);
         var report = new CatalogValidator().Validate(loaded, verifyChecksums: false);
 
         Assert.Contains(report.Issues, x => x.Code == "group.deprecated.incomplete" && x.Severity == IssueSeverity.Error);
@@ -123,6 +123,47 @@ public class CatalogValidatorTests
         var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset));
 
         Assert.Contains(report.Issues, x => x.Code == "asset.mcp.envVar.invalid" && x.Severity == IssueSeverity.Error);
+    }
+
+    [Fact]
+    public void McpPlaceholderCommandsAreRejected()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Mcp, "placeholder",
+            mcp: new McpServer { Server = "placeholder", Command = "replace-me" });
+
+        var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset));
+
+        Assert.Contains(report.Issues, x => x.Code == "asset.mcp.command.invalid" && x.Severity == IssueSeverity.Error);
+    }
+
+    [Fact]
+    public void RemoteMcpRequiresHttpsOutsideLocalhost()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Mcp, "insecure",
+            mcp: new McpServer
+            {
+                Server = "insecure",
+                Transport = McpTransport.Http,
+                Url = "http://mcp.example.com"
+            });
+
+        var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset));
+
+        Assert.Contains(report.Issues, x => x.Code == "asset.mcp.url.insecure" && x.Severity == IssueSeverity.Error);
+    }
+
+    [Fact]
+    public void HookCommandCannotEscapeReviewedContent()
+    {
+        using var temp = new TempDir();
+        var asset = TestData.WriteLocalAsset(temp.Path, AssetKind.Hooks, "escape",
+            hook: new HookSpec { Command = "../outside.sh" });
+
+        var report = new CatalogValidator().Validate(TestData.Loaded(temp.Path, asset));
+
+        Assert.Contains(report.Issues, x => x.Code == "asset.hook.command.unsafe" && x.Severity == IssueSeverity.Error);
     }
 
     [Fact]
@@ -146,7 +187,7 @@ public class CatalogValidatorTests
         {
             Profiles = [new ProfileDefinition { Id = "backend", Name = "Backend", Assets = ["ghost"] }]
         };
-        var loaded = new LoadedCatalog(catalog, Path.Combine(temp.Path, "catalog.yaml"), [temp.Path], new CatalogLockFile(), []);
+        var loaded = new LoadedCatalog(catalog, Path.Combine(temp.Path, "catalog.yaml"), temp.Path, new CatalogLockFile(), []);
         var report = new CatalogValidator().Validate(loaded, verifyChecksums: false);
 
         Assert.Contains(report.Issues, x => x.Code == "profile.asset.unknown" && x.Severity == IssueSeverity.Error);

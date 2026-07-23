@@ -10,13 +10,13 @@ External assets live in someone else's git repo (GitHub, Azure DevOps, any `.git
 - **The repository is the attribution.** The source URL identifies the upstream project and the pinned ref identifies the exact reviewed revision.
 - **License metadata stays lightweight.** Record the license when known. An omitted license is allowed with a warning; it is not treated as permission to redistribute.
 
-## Authoring
+## Submit for review
 
 ```bash
-agentpack import https://github.com/example-org/agent-assets/tree/main/skills/code-review@9d2f1ae187231d8199c64b5b762e1bdf2244733d
+agentpack submit skill https://github.com/example-org/agent-assets/tree/main/skills/code-review --license MIT
 ```
 
-Pass `--license MIT` when the license is known. Otherwise import continues without another question.
+`submit` resolves the moving URL to its current full commit SHA, generates the checksum, validates the catalog, and opens a PR. Pass `--license MIT` when the license is known. Otherwise submission continues with a review warning.
 
 Manifest:
 
@@ -29,7 +29,7 @@ source:
 
 `license` should use the upstream SPDX identifier when available. If no license can be confirmed, omit the field; catalog validation warns instead of failing. Reviewers must still confirm that the license applies to the exact imported path and that any copyright, license, or NOTICE files required by it remain with the content; manifest metadata is not a substitute for those files. AgentPack preserves any recorded license with the source URL and ref in its installation lockfile.
 
-When a consumer runs `agentpack add`, the install plan includes a **Source** column such as `example-org/agent-assets`. For a single external asset, the confirmation is explicit: `Add code-review from example-org/agent-assets?` Non-GitHub sources fall back to their repository URL.
+When a consumer runs `agentpack install`, the plan includes a **Source** column such as `example-org/agent-assets`. Non-GitHub sources fall back to their repository URL.
 
 Supported URL shapes:
 
@@ -45,7 +45,7 @@ Private repos work through your normal git credentials (credential helper / SSH)
 The subpath can be as deep as the repo nests it — catalog-style repos often organize skills by topic:
 
 ```bash
-agentpack import https://github.com/mattpocock/skills/tree/main/skills/engineering/code-review@<commit-sha>
+agentpack submit skill https://github.com/mattpocock/skills/tree/main/skills/engineering/code-review
 ```
 
 The asset id defaults to the last path segment (`code-review`); override with `--id`.
@@ -61,7 +61,7 @@ Upstream skills may ship optional tool-specific files next to `SKILL.md` — for
 3. Compare against `catalog.lock.yaml`; mismatch = hard failure, cache entry discarded.
 4. Install like any local asset (copy tree / merge).
 
-Planning (`agentpack plan`, `list`) never touches the network; fetching happens only on apply or `catalog verify-external`.
+Install planning may refresh the catalog repository, but it does not fetch an external asset's content until apply or `catalog verify-external`.
 
 ## CI verification
 

@@ -3,41 +3,26 @@ using AgentPack.Core.Serialization;
 namespace AgentPack.Core;
 
 /// <summary>
-/// Loads the effective catalog: the primary catalog (working directory or synced source),
-/// asset manifests discovered under assets/, and the optional project overlay
-/// (.agentpack/catalog.yaml + .agentpack/assets/). Derivable fields (id, kind, content path)
-/// are inferred from the folder layout before mapping, so authors never repeat them.
+/// Loads the active catalog (a checkout or synced source) and discovers manifests
+/// under assets/. Derivable fields are inferred from the folder layout.
 /// </summary>
 public sealed class CatalogLayerLoader
 {
     private readonly SourceManager _sources;
-    private readonly AgentPackPaths _paths;
 
-    public CatalogLayerLoader(SourceManager sources, AgentPackPaths paths)
+    public CatalogLayerLoader(SourceManager sources)
     {
         _sources = sources;
-        _paths = paths;
     }
 
-    public LoadedCatalog Load(string? explicitCatalogPath = null)
+    public LoadedCatalog Load(string? explicitCatalogPath = null, bool refreshRemoteNow = false)
     {
         var issues = new List<CatalogIssue>();
         var basePath = _sources.ResolveCatalogPath(explicitCatalogPath);
-        if (_sources.RefreshIfStale(basePath) is { } staleWarning) issues.Add(staleWarning);
+        if (_sources.RefreshIfStale(basePath, refreshRemoteNow) is { } staleWarning) issues.Add(staleWarning);
         var baseDto = CatalogLoader.LoadDto(basePath);
         var baseRoot = Path.GetDirectoryName(Path.GetFullPath(basePath))!;
-        var roots = new List<string> { baseRoot };
         DiscoverAssets(baseDto, baseRoot);
-
-        var overlayPath = Path.Combine(_paths.WorkingDirectory, ".agentpack", "catalog.yaml");
-        if (File.Exists(overlayPath) && !Path.GetFullPath(overlayPath).Equals(Path.GetFullPath(basePath), StringComparison.OrdinalIgnoreCase))
-        {
-            var overlayDto = CatalogLoader.LoadDto(overlayPath);
-            var overlayRoot = Path.GetDirectoryName(Path.GetFullPath(overlayPath))!;
-            DiscoverAssets(overlayDto, overlayRoot);
-            Merge(baseDto, overlayDto);
-            roots.Add(overlayRoot);
-        }
 
         var catalog = CatalogMapper.Map(baseDto, issues);
         var errors = issues.Where(x => x.Severity == IssueSeverity.Error).ToList();
@@ -50,7 +35,7 @@ public sealed class CatalogLayerLoader
         }
 
         var lockFile = CatalogLockFile.Load(CatalogLockFile.PathFor(basePath));
-        return new LoadedCatalog(catalog, basePath, roots, lockFile, issues.Where(x => x.Severity == IssueSeverity.Warning).ToList());
+        return new LoadedCatalog(catalog, basePath, baseRoot, lockFile, issues.Where(x => x.Severity == IssueSeverity.Warning).ToList());
     }
 
     private static void DiscoverAssets(CatalogDto catalog, string root)
@@ -98,14 +83,6 @@ public sealed class CatalogLayerLoader
         }
     }
 
-    private static void Merge(CatalogDto target, CatalogDto overlay)
-    {
-        foreach (var group in overlay.Groups) Upsert(target.Groups, group, x => x.Id);
-        foreach (var asset in overlay.Assets) Upsert(target.Assets, asset, x => x.Id);
-        foreach (var bundle in overlay.Bundles) Upsert(target.Bundles, bundle, x => x.Id);
-        foreach (var profile in overlay.Profiles) Upsert(target.Profiles, profile, x => x.Id);
-    }
-
     private static void Upsert<T>(List<T> target, T item, Func<T, string> key)
     {
         var existing = target.FindIndex(x => key(x).Equals(key(item), StringComparison.OrdinalIgnoreCase));
@@ -114,27 +91,17 @@ public sealed class CatalogLayerLoader
     }
 }
 
+/// <summary>
+/// One catalog, one content root. Assets used to be able to come from a project overlay
+/// as well, which is why local paths were resolved by probing a list of roots.
+/// </summary>
 public sealed record LoadedCatalog(
     Catalog Catalog,
     string PrimaryCatalogPath,
-    IReadOnlyList<string> CatalogRoots,
+    string CatalogRoot,
     CatalogLockFile Lock,
     IReadOnlyList<CatalogIssue> Warnings)
 {
-    public string RootFor(Asset asset)
-    {
-        if (asset.Source is AssetSource.Local local)
-        {
-            foreach (var root in CatalogRoots.Reverse())
-            {
-                var candidate = Path.GetFullPath(Path.Combine(root, local.RelativePath));
-                if (File.Exists(candidate) || Directory.Exists(candidate)) return root;
-            }
-        }
-
-        return CatalogRoots[0];
-    }
-
     /// <summary>Manifest checksum wins; the generated catalog lock is the fallback.</summary>
     public string? EffectiveChecksum(Asset asset)
     {

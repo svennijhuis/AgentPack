@@ -2,35 +2,32 @@
 
 ## 0.0.1 — Unreleased
 
-Fixes from a follow-up production-readiness review.
+Catalog-first workflow and safety cleanup.
 
 ### Added
 
-- **Task-oriented CLI onboarding and approved-catalog discovery.** Running `agentpack`
-  now shows personal, team, and shared-catalog workflows; `agentpack help <command>`
-  supports familiar nested help; and `agentpack find <query>` searches approved asset
-  metadata with kind, group, and provider filters. Familiar `install`, `ls`, and
-  `search` aliases complement the existing `uninstall` and `update` aliases.
-- **First-class personal and team catalogs.** `agentpack init` creates a standalone
-  catalog, `agentpack init --overlay` creates a project catalog, and
-  `agentpack new ... --overlay` scaffolds directly under `.agentpack/assets/`.
-  A project catalog works by itself when no central source is configured and becomes
-  a higher-precedence overlay when one is present.
-- A task-first README, exhaustive CLI reference, and updated authoring/overlay guides
-  document the individual, service-team, and company approval workflows.
-- **New `agents` asset kind** — custom agents / subagents install to all four
-  providers: `.claude/agents/<id>.md`, `.cursor/agents/<id>.md`,
-  `.github/agents/<id>.agent.md` (user scope `~/.copilot/agents/`, the
-  `.agent.md` suffix is required), and `.codex/agents/<id>.toml` (generated
-  from the agent markdown — `name`, `description`, `developer_instructions`,
-  optional `model`). `agentpack new agents <id>` scaffolds the content file.
-- **Claude Code rules support** — rules assets now install to
-  `.claude/rules/<id>.md` in addition to `.cursor/rules/<id>.mdc`. The `.mdc`
-  frontmatter is translated (`globs` → `paths`; `alwaysApply: true` drops the
-  path scoping so the rule always loads).
-- New `ConvertFile` install mode backing both translations: converted files are
-  whole-file targets with the same drift detection, backups, and removal as any
-  single-file install.
+- **One built-in catalog.** Normal users can search and install without configuring
+  a repository. Install and update refresh it automatically; status shows the URL,
+  branch, revision, cache, and last refresh.
+- **`agentpack submit`.** Local files/folders and pinned external URLs become a
+  validated proposal branch and pull request. Read-only contributors automatically
+  submit through a GitHub fork; maintainers still use a non-main proposal branch.
+- **Kind-specific submission guardrails.** Skills require `SKILL.md`; hooks accept a
+  file or folder with a safe relative command; MCP servers use typed command/URL
+  settings and environment-variable names only. Local content is previewed, bounded,
+  and checked for symlinks and secret-like files before publishing.
+- Catalog manifests can declare `minimumAgentPackVersion` so a newer catalog gives
+  an actionable CLI update message.
+- CODEOWNERS and a documented branch-protection/ruleset checklist establish the
+  catalog review boundary.
+
+### Changed
+
+- The public command surface is now `search`, `install`, `update`, and `submit`.
+  The discarded local catalog, overlay, manual import, and compatibility-alias paths
+  were removed instead of remaining as competing workflows.
+- Catalog content updates independently from NuGet. A NuGet release is required only
+  for CLI behavior, provider adapters, validation, or catalog schema changes.
 
 ### Fixed
 
@@ -90,6 +87,8 @@ Fixes from a follow-up production-readiness review.
 
 ## Pre-release development — 2026-07-12
 
+Historical command names below describe the prototype at that time and are not supported by the current CLI. See the unreleased section and README for the catalog-first interface.
+
 Initial development milestone. Everything from the production-readiness review is fixed,
 regression-tested, and CI-verified on Linux, Windows, and macOS.
 
@@ -130,12 +129,12 @@ regression-tested, and CI-verified on Linux, Windows, and macOS.
 - Backups under `.agentpack/backups/` are pruned to the newest 20.
 - Lockfile and config files preserve fields written by newer agentpack versions
   (safe downgrade/upgrade between 1.x versions).
-- CI verifies formatting (`dotnet format`) and builds `claude/**` branches.
+- CI verifies formatting (`dotnet format`) and builds proposal branches.
 
 ### Upgrading from 0.2.x
 
 No manual migration. Lock entries written by 0.2.x lack the recorded fragment;
-the first `agentpack add`/`upgrade`/`profile apply` that touches an up-to-date
+the first `agentpack install`/`update`/`profile apply` that touches an up-to-date
 entry backfills it automatically. Until an entry is backfilled it is treated as
 clean (never as false drift). If an upgrade of a 0.2.x-installed MCP server or
 hook reports a conflict because its config changed between versions, rerun with
@@ -144,5 +143,5 @@ hook reports a conflict because its config changed between versions, rerun with
 ## 0.2.0 — 2026-07-02
 
 Typed core, Spectre CLI, verified provider mappings, catalog lock, external
-assets pinned to SHAs, hooks on all four providers. See
-`docs/prod-readiness-plan.md` for the design rationale.
+assets pinned to SHAs, and hooks on all four providers. The current catalog-first
+workflow and design rationale are documented in `README.md` and `docs/how-it-works.md`.

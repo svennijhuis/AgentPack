@@ -6,6 +6,104 @@ using Spectre.Console.Cli;
 
 namespace AgentPack.Cli.Commands;
 
+public sealed class CatalogUseCommand : Command<CatalogUseCommand.Settings>
+{
+    public sealed class Settings : CommandSettings
+    {
+        [CommandArgument(0, "<git-url>")]
+        public string Url { get; set; } = "";
+
+        [CommandOption("--name <NAME>")]
+        [Description("Display name for the catalog. Default: catalog.")]
+        public string Name { get; set; } = "catalog";
+
+        [CommandOption("--branch <BRANCH>")]
+        [Description("Branch to track. Default: main.")]
+        public string Branch { get; set; } = "main";
+    }
+
+    public override int Execute(CommandContext context, Settings settings)
+    {
+        var session = new CliSession();
+
+        // Fetch before selecting: a URL or branch that cannot be reached must never
+        // become the stored catalog, otherwise every later command fails.
+        var candidate = SourceManager.DescribeSource(settings.Name, settings.Url, settings.Branch);
+        Sync(session, candidate);
+
+        if (!File.Exists(Path.Combine(session.Sources.SourceCachePath(candidate), "catalog.yaml")))
+        {
+            throw new AgentPackException(
+                $"'{candidate.Url}' (branch {candidate.Branch}) has no catalog.yaml at its root.",
+                "Point at a catalog repository, or rerun against the branch that holds it.");
+        }
+
+        var source = session.Sources.UseSource(candidate.Name, candidate.Url, candidate.Branch);
+        Output.Success($"Using catalog '{source.Name}' ({source.Url}, branch {source.Branch}).");
+        Output.Info("Catalog updates are independent from NuGet releases; install/update refresh automatically.");
+        return ExitCodes.Ok;
+    }
+
+    internal static void Sync(CliSession session, AgentPackSource source)
+    {
+        if (Output.CanPrompt)
+        {
+            AnsiConsole.Status().Start($"Syncing {source.Name}...", _ => session.Sources.Sync(source));
+        }
+        else
+        {
+            session.Sources.Sync(source);
+        }
+    }
+}
+
+public sealed class CatalogSyncCommand : Command
+{
+    public override int Execute(CommandContext context)
+    {
+        var session = new CliSession();
+        var source = session.Sources.RequireEffectiveSource();
+        CatalogUseCommand.Sync(session, source);
+        Output.Success($"Synced catalog '{source.Name}'.");
+        return ExitCodes.Ok;
+    }
+}
+
+public sealed class CatalogStatusCommand : Command
+{
+    public override int Execute(CommandContext context)
+    {
+        var session = new CliSession();
+        var localCatalog = Path.Combine(session.Paths.WorkingDirectory, "catalog.yaml");
+        if (File.Exists(localCatalog))
+        {
+            Output.Table(["Catalog", "Value"], new[]
+            {
+                new[] { "Mode", "local catalog checkout" },
+                new[] { "Location", localCatalog },
+                new[] { "Revision", SourceManager.HeadRevision(session.Paths.WorkingDirectory) ?? "unknown" }
+            });
+            Output.Info("A catalog checkout takes precedence while you are inside it.");
+            return ExitCodes.Ok;
+        }
+
+        var source = session.Sources.RequireEffectiveSource();
+        var cache = session.Sources.SourceCachePath(source);
+        var synced = session.Sources.LastSyncedAt(source);
+        Output.Table(["Catalog", "Value"], new[]
+        {
+            new[] { "Name", source.Name },
+            new[] { "Repository", source.Url },
+            new[] { "Branch", source.Branch },
+            new[] { "Revision", Directory.Exists(Path.Combine(cache, ".git")) ? SourceManager.HeadRevision(cache) ?? "unknown" : "not downloaded" },
+            new[] { "Last refresh", synced is null ? "never" : synced.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss zzz") },
+            new[] { "Cache", cache }
+        });
+        Output.Info("Install and update refresh automatically; 'agentpack catalog sync' forces it now.");
+        return ExitCodes.Ok;
+    }
+}
+
 public sealed class CatalogValidateCommand : Command<CatalogValidateCommand.Settings>
 {
     public sealed class Settings : CommandSettings
@@ -147,7 +245,7 @@ public class ProfileApplyCommand : Command<ProfileApplyCommand.Settings>
             throw new AgentPackException($"Profile '{profile.Id}' selects no installable assets.");
         }
 
-        var providers = profile.Providers.Count > 0 ? profile.Providers : settings.ResolveProviders(session.Paths);
+        var providers = profile.Providers.Count > 0 ? profile.Providers : settings.ResolveProviders(session.Paths, scope);
         var plan = new Installer(session.Paths).Plan(loaded, assets, providers, scope);
         return CommandHelpers.RenderAndApply(session, loaded, plan, scope, settings, $"Profile '{profile.Id}'", Apply);
     }
@@ -183,70 +281,4 @@ public class ProfileApplyCommand : Command<ProfileApplyCommand.Settings>
 public sealed class ProfilePlanCommand : ProfileApplyCommand
 {
     protected override bool Apply => false;
-}
-
-public sealed class SourceAddCommand : Command<SourceAddCommand.Settings>
-{
-    public sealed class Settings : CommandSettings
-    {
-        [CommandArgument(0, "<name>")]
-        public string Name { get; set; } = "";
-
-        [CommandArgument(1, "<git-url>")]
-        public string Url { get; set; } = "";
-
-        [CommandOption("--branch <BRANCH>")]
-        [Description("Branch to track. Default: main.")]
-        public string Branch { get; set; } = "main";
-    }
-
-    public override int Execute(CommandContext context, Settings settings)
-    {
-        var session = new CliSession();
-        session.Sources.AddSource(settings.Name, settings.Url, settings.Branch);
-        Output.Success($"Added source '{settings.Name}' ({settings.Url}, branch {settings.Branch}).");
-        Output.Info("Run 'agentpack source sync' to fetch it.");
-        return 0;
-    }
-}
-
-public sealed class SourceListCommand : Command
-{
-    public override int Execute(CommandContext context)
-    {
-        var session = new CliSession();
-        var config = session.Sources.LoadConfig();
-        Output.Table(["Name", "Branch", "Url"], config.Sources.Select(x => new[] { x.Name, x.Branch, x.Url }));
-        return 0;
-    }
-}
-
-public sealed class SourceSyncCommand : Command
-{
-    public override int Execute(CommandContext context)
-    {
-        var session = new CliSession();
-        var config = session.Sources.LoadConfig();
-        if (config.Sources.Count == 0)
-        {
-            Output.Info("No sources registered. Add one with 'agentpack source add <name> <git-url>'.");
-            return 0;
-        }
-
-        foreach (var source in config.Sources)
-        {
-            if (Output.CanPrompt)
-            {
-                AnsiConsole.Status().Start($"Syncing {source.Name}...", _ => session.Sources.Sync(source));
-            }
-            else
-            {
-                session.Sources.Sync(source);
-            }
-
-            Output.Success($"Synced {source.Name}.");
-        }
-
-        return 0;
-    }
 }

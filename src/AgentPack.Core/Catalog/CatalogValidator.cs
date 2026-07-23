@@ -85,13 +85,46 @@ public sealed class CatalogValidator
             }
 
             ValidateMcp(asset, report);
+            ValidateHook(loaded, asset, report);
             ValidateSource(loaded, asset, verifyChecksums, report);
         }
     }
 
     private static void ValidateMcp(Asset asset, ValidationReport report)
     {
-        if (asset.Kind != AssetKind.Mcp || asset.Mcp is null) return;
+        if (asset.Kind != AssetKind.Mcp) return;
+        if (asset.Mcp is null)
+        {
+            report.Error("asset.mcp.metadata.missing", $"MCP asset '{asset.Id}' must define typed mcp: metadata.");
+            return;
+        }
+
+        if (asset.Mcp.Transport == McpTransport.Stdio)
+        {
+            if (string.IsNullOrWhiteSpace(asset.Mcp.Command) ||
+                asset.Mcp.Command.Equals("replace-me", StringComparison.OrdinalIgnoreCase))
+            {
+                report.Error("asset.mcp.command.invalid", $"MCP asset '{asset.Id}' needs a real stdio command, not a placeholder.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(asset.Mcp.Url))
+            {
+                report.Error("asset.mcp.url.unexpected", $"Stdio MCP asset '{asset.Id}' cannot also define a URL.");
+            }
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(asset.Mcp.Command))
+            {
+                report.Error("asset.mcp.command.unexpected", $"Remote MCP asset '{asset.Id}' cannot also define a command.");
+            }
+
+            if (!IsSafeMcpUrl(asset.Mcp.Url))
+            {
+                report.Error("asset.mcp.url.insecure",
+                    $"Remote MCP asset '{asset.Id}' needs an absolute HTTPS URL (HTTP is allowed only for localhost).");
+            }
+        }
 
         foreach (var envVar in asset.Mcp.EnvVars.Where(x => !EnvName.IsMatch(x)))
         {
@@ -112,13 +145,54 @@ public sealed class CatalogValidator
         }
     }
 
+    private static void ValidateHook(LoadedCatalog loaded, Asset asset, ValidationReport report)
+    {
+        if (asset.Kind != AssetKind.Hooks) return;
+        if (asset.Hook is null || string.IsNullOrWhiteSpace(asset.Hook.Command))
+        {
+            report.Error("asset.hook.command.missing", $"Hook asset '{asset.Id}' must define its entry file with hook.command.");
+            return;
+        }
+
+        if (HookCommand.Normalize(asset.Hook.Command) is null)
+        {
+            report.Error("asset.hook.command.unsafe",
+                $"Hook asset '{asset.Id}' command must be a relative file inside its reviewed content folder.");
+            return;
+        }
+
+        // Only local content is on disk during validation. External content is verified
+        // against the same rule once it is resolved, without fetching it from here.
+        if (asset.Source is not AssetSource.Local local) return;
+        var content = Path.Combine(loaded.CatalogRoot, local.RelativePath);
+        if (HookCommand.ResolveInside(content, asset.Hook.Command) is null)
+        {
+            report.Error("asset.hook.command.missing",
+                $"Hook asset '{asset.Id}' command '{asset.Hook.Command}' was not found in its content folder.");
+        }
+    }
+
+    /// <summary>
+    /// An MCP endpoint must be absolute HTTPS; plain HTTP is accepted only for a
+    /// localhost development server. Public so submission applies the same rule the
+    /// catalog enforces, instead of the two drifting apart.
+    /// </summary>
+    public static bool IsSafeMcpUrl(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return false;
+        return uri.Scheme == "https" || uri.IsLoopback || uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>An environment variable name, never a value. Same rule as above.</summary>
+    public static bool IsValidEnvName(string? value) => value is not null && EnvName.IsMatch(value);
+
     private static void ValidateSource(LoadedCatalog loaded, Asset asset, bool verifyChecksums, ValidationReport report)
     {
         switch (asset.Source)
         {
             case AssetSource.Local local:
                 {
-                    var fullPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
+                    var fullPath = Path.GetFullPath(Path.Combine(loaded.CatalogRoot, local.RelativePath));
                     if (!File.Exists(fullPath) && !Directory.Exists(fullPath))
                     {
                         report.Error("asset.local.missing", $"Asset '{asset.Id}' local content does not exist: {local.RelativePath}.");

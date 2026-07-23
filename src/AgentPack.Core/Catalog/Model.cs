@@ -10,6 +10,7 @@ public sealed record Catalog
 {
     public string SchemaVersion { get; init; } = "1";
     public string CatalogVersion { get; init; } = "0.1.0";
+    public SemVersion? MinimumAgentPackVersion { get; init; }
     public IReadOnlyList<GroupDefinition> Groups { get; init; } = [];
     public IReadOnlyList<Asset> Assets { get; init; } = [];
     public IReadOnlyList<ProfileDefinition> Profiles { get; init; } = [];

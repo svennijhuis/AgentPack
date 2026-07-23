@@ -23,6 +23,7 @@ public sealed class AgentPackPaths
     public string ConfigPath => Path.Combine(Home, "config.json");
     public string CacheRoot => Path.Combine(Home, "cache");
     public string ExternalCacheRoot => Path.Combine(CacheRoot, "external");
+    public string SubmissionsRoot => Path.Combine(Home, "submissions");
     public string ProjectLockPath => Path.Combine(WorkingDirectory, ".agentpack", "lock.json");
     public string UserLockPath => Path.Combine(Home, "lock.json");
 

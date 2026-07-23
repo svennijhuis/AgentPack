@@ -6,6 +6,8 @@ namespace AgentPack.Core;
 /// </summary>
 public sealed class ExternalResolver
 {
+    private static readonly GitRunner Git = new("Check network access, the repo URL, and your git credentials.");
+
     private readonly AgentPackPaths _paths;
 
     public ExternalResolver(AgentPackPaths paths)
@@ -51,15 +53,15 @@ public sealed class ExternalResolver
         var repoCache = Path.Combine(cacheRoot, "repo");
         if (!Directory.Exists(Path.Combine(repoCache, ".git")))
         {
-            Ensure(ProcessRunner.Run("git", ["clone", "--", repo, repoCache], _paths.WorkingDirectory),
-                asset, $"clone {resolved.Repo}");
+            Git.Run(["clone", "--", repo, repoCache], _paths.WorkingDirectory,
+                $"Unable to clone {resolved.Repo} for '{asset.Id}'");
         }
         else
         {
-            Ensure(ProcessRunner.Run("git", ["fetch", "--all", "--tags", "--prune"], repoCache), asset, "fetch");
+            Git.Run(["fetch", "--all", "--tags", "--prune"], repoCache, $"Unable to fetch for '{asset.Id}'");
         }
 
-        Ensure(ProcessRunner.Run("git", ["checkout", "--force", reference, "--"], repoCache), asset, $"checkout ref '{resolved.Ref}'");
+        Git.Run(["checkout", "--force", reference, "--"], repoCache, $"Unable to checkout ref '{resolved.Ref}' for '{asset.Id}'");
 
         var sourcePath = Path.GetFullPath(Path.Combine(repoCache, resolved.Path));
         if (!File.Exists(sourcePath) && !Directory.Exists(sourcePath))
@@ -71,7 +73,7 @@ public sealed class ExternalResolver
 
         if (Directory.Exists(finalPath)) Directory.Delete(finalPath, recursive: true);
         if (File.Exists(finalPath)) File.Delete(finalPath);
-        ContentHash.CopyTree(sourcePath, finalPath);
+        CopyReviewedContent(sourcePath, finalPath, asset.Id);
 
         var actual = ContentHash.Compute(finalPath);
         if (resolved.Checksum is not null && !actual.Equals(resolved.Checksum, StringComparison.OrdinalIgnoreCase))
@@ -122,20 +124,43 @@ public sealed class ExternalResolver
         Path.Combine(_paths.ExternalCacheRoot, CacheKey(resolved), "content");
 
     private static string CacheKey(ResolvedExternalSource resolved) =>
-        ContentHash.ShortKey(resolved.Repo, resolved.Ref, resolved.Path, resolved.Checksum);
+        // The checksum verifies this identity; it is not part of the identity. Keeping
+        // one cache entry lets a newly generated lock verify the exact bytes it hashed.
+        ContentHash.ShortKey(resolved.Repo, resolved.Ref, resolved.Path);
 
-    private static void Ensure(ProcessResult result, Asset asset, string operation)
+    private static void CopyReviewedContent(string source, string destination, string assetId)
     {
-        if (result.ExitCode != 0)
+        if (File.Exists(source))
         {
-            throw new AgentPackException(
-                $"Unable to {operation} for '{asset.Id}': {FirstLine(result.Error)}",
-                "Check network access, the repo URL, and your git credentials.");
+            SafeTree.Attributes(source, $"External asset '{assetId}'");
+            ContentHash.CopyTree(source, destination);
+            return;
+        }
+
+        Directory.CreateDirectory(destination);
+        CopyDirectory(source, source, destination, assetId);
+    }
+
+    private static void CopyDirectory(string root, string directory, string destination, string assetId)
+    {
+        foreach (var entry in Directory.EnumerateFileSystemEntries(directory).Order(StringComparer.Ordinal))
+        {
+            var name = Path.GetFileName(entry);
+            var relative = Path.GetRelativePath(root, entry);
+            var attributes = SafeTree.Attributes(entry, $"External asset '{assetId}' path '{relative}'");
+            if ((attributes & FileAttributes.Directory) != 0)
+            {
+                if (name is ".git" or ".hg" or ".svn") continue;
+                Directory.CreateDirectory(Path.Combine(destination, relative));
+                CopyDirectory(root, entry, destination, assetId);
+                continue;
+            }
+
+            var target = Path.Combine(destination, relative);
+            ContentHash.CopyTree(entry, target);
         }
     }
 
-    private static string FirstLine(string text) =>
-        text.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "unknown error";
 }
 
 /// <summary>Resolves any asset's content to a local path (catalog folder or external cache).</summary>
@@ -152,7 +177,7 @@ public sealed class AssetResolver
     {
         return asset.Source switch
         {
-            AssetSource.Local local => Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath)),
+            AssetSource.Local local => Path.GetFullPath(Path.Combine(loaded.CatalogRoot, local.RelativePath)),
             AssetSource.External => _externalResolver.ResolveToCache(ExternalResolver.WithEffectiveChecksum(loaded, asset)),
             _ => throw new AgentPackException($"Asset '{asset.Id}' has an unknown source type.")
         };
@@ -163,7 +188,7 @@ public sealed class AssetResolver
     {
         return asset.Source switch
         {
-            AssetSource.Local local => Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath)),
+            AssetSource.Local local => Path.GetFullPath(Path.Combine(loaded.CatalogRoot, local.RelativePath)),
             AssetSource.External => _externalResolver.TryResolveFromCache(ExternalResolver.WithEffectiveChecksum(loaded, asset)),
             _ => null
         };

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using AgentPack.Core;
 
 namespace AgentPack.Tests;
 
@@ -14,7 +15,8 @@ public class CliEndToEndTests
         var result = RunCli(temp, "--help");
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("agentpack", result.Output);
-        Assert.Contains("add", result.Output);
+        Assert.Contains("install", result.Output);
+        Assert.Contains("submit", result.Output);
     }
 
     [Fact]
@@ -23,9 +25,10 @@ public class CliEndToEndTests
         using var temp = new TempDir();
         var result = RunCli(temp);
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("Use an existing team catalog", result.Output);
-        Assert.Contains("agentpack init --overlay", result.Output);
-        Assert.Contains("agentpack find <query>", result.Output);
+        Assert.Contains("Install from the catalog", result.Output);
+        Assert.Contains("agentpack install <id> --user", result.Output);
+        Assert.Contains("agentpack submit <kind> <path-or-url-or-id>", result.Output);
+        Assert.Contains("agentpack search <query>", result.Output);
         Assert.DoesNotContain("USAGE:", result.Output);
     }
 
@@ -38,71 +41,17 @@ public class CliEndToEndTests
         Assert.Equal(0, root.ExitCode);
         Assert.Contains("COMMANDS:", root.Output);
 
-        var add = RunCli(temp, "help", "add");
-        Assert.Equal(0, add.ExitCode);
-        Assert.Contains("agentpack add", add.Output);
-        Assert.Contains("--overlay", RunCli(temp, "help", "new").Output);
+        var install = RunCli(temp, "help", "install");
+        Assert.Equal(0, install.ExitCode);
+        Assert.Contains("agentpack install", install.Output);
+
+        var submit = RunCli(temp, "help", "submit");
+        Assert.Equal(0, submit.ExitCode);
+        Assert.Contains("agentpack submit", submit.Output);
 
         var nested = RunCli(temp, "help", "profile", "apply");
         Assert.Equal(0, nested.ExitCode);
         Assert.Contains("agentpack profile apply", nested.Output);
-    }
-
-    [Fact]
-    public void InitCreatesCatalogsAndNeverOverwritesThem()
-    {
-        using var rootTemp = new TempDir();
-        var root = RunCli(rootTemp, "init");
-        Assert.Equal(0, root.ExitCode);
-        var rootCatalog = Path.Combine(WorkDir(rootTemp), "catalog.yaml");
-        Assert.True(File.Exists(rootCatalog));
-        var original = File.ReadAllText(rootCatalog);
-        var repeated = RunCli(rootTemp, "init");
-        Assert.NotEqual(0, repeated.ExitCode);
-        Assert.Equal(original, File.ReadAllText(rootCatalog));
-
-        using var overlayTemp = new TempDir();
-        var overlay = RunCli(overlayTemp, "init", "--overlay");
-        Assert.Equal(0, overlay.ExitCode);
-        Assert.True(File.Exists(Path.Combine(WorkDir(overlayTemp), ".agentpack", "catalog.yaml")));
-        Assert.False(File.Exists(Path.Combine(WorkDir(overlayTemp), "catalog.yaml")));
-    }
-
-    [Fact]
-    public void NewOverlayCreatesStandaloneProjectCatalogAndAsset()
-    {
-        using var temp = new TempDir();
-        var create = RunCli(temp, "new", "skills", "service-setup", "--overlay");
-        Assert.Equal(0, create.ExitCode);
-        Assert.Contains(".agentpack/catalog.yaml", create.Output);
-        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".agentpack", "catalog.yaml")));
-        Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".agentpack", "assets", "skills", "service-setup", "content", "SKILL.md")));
-
-        var list = RunCli(temp, "list");
-        Assert.Equal(0, list.ExitCode);
-        Assert.Contains("service-setup", list.Output);
-
-        var validate = RunCli(temp, "catalog", "validate", "--no-checksums");
-        Assert.Equal(0, validate.ExitCode);
-    }
-
-    [Fact]
-    public void NewOverlayScaffoldsEveryInstallableAssetKindIntoAValidCatalog()
-    {
-        using var temp = new TempDir();
-        // Tools and templates remain explicit unsupported kinds in the provider matrix;
-        // scaffolding them is allowed for forward compatibility, but validation correctly
-        // rejects catalogs that claim they can currently be installed.
-        string[] kinds = ["skills", "hooks", "mcp", "instructions", "rules", "prompts", "agents"];
-        foreach (var kind in kinds)
-        {
-            var create = RunCli(temp, "new", kind, $"sample-{kind}", "--overlay");
-            Assert.Equal(0, create.ExitCode);
-            Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".agentpack", "assets", kind, $"sample-{kind}", "agentpack.yaml")));
-        }
-
-        var validate = RunCli(temp, "catalog", "validate", "--no-checksums");
-        Assert.Equal(0, validate.ExitCode);
     }
 
     [Fact]
@@ -113,7 +62,7 @@ public class CliEndToEndTests
         WriteSkill(temp, "service-setup", description: "Bootstrap TypeScript backend services.", groups: "[backend, platform]");
         WriteSkill(temp, "frontend-review", description: "Review React user interfaces.", groups: "[review]");
 
-        var byWords = RunCli(temp, "find", "typescript service");
+        var byWords = RunCli(temp, "search", "typescript service");
         Assert.Equal(0, byWords.ExitCode);
         Assert.Contains("service-setup", byWords.Output);
         Assert.DoesNotContain("frontend-review", byWords.Output);
@@ -123,22 +72,414 @@ public class CliEndToEndTests
         Assert.Contains("frontend-review", byFilter.Output);
         Assert.DoesNotContain("service-setup", byFilter.Output);
 
-        var none = RunCli(temp, "find", "not-in-approved-catalog");
+        var none = RunCli(temp, "search", "not-in-approved-catalog");
         Assert.Equal(0, none.ExitCode);
         Assert.Contains("No approved assets match", none.Output);
     }
 
     [Fact]
-    public void FamiliarAliasesRemainEquivalent()
+    public void InstallUsesTheApprovedCatalog()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
         WriteSkill(temp, "demo-skill");
 
-        Assert.Contains("demo-skill", RunCli(temp, "ls").Output);
+        Assert.Contains("demo-skill", RunCli(temp, "list").Output);
         var install = RunCli(temp, "install", "demo-skill", "--claude", "--project", "--yes");
         Assert.Equal(0, install.ExitCode);
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "demo-skill", "SKILL.md")));
+    }
+
+    [Fact]
+    public void InstallDryRunShowsDestinationWithoutWritingFiles()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "demo-skill");
+
+        var result = RunCli(temp, "install", "demo-skill", "--claude", "--project", "--dry-run");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Catalog: local", result.Output);
+        Assert.Contains("project scope", result.Output);
+        Assert.Contains("Install plan (dry run)", result.Output);
+        Assert.False(Directory.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "demo-skill")));
+    }
+
+    [Fact]
+    public void CatalogStatusShowsBuiltInCatalogWithoutDownloadingIt()
+    {
+        using var temp = new TempDir();
+
+        var result = RunCli(temp, "catalog", "status");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("official", result.Output);
+        Assert.Contains(AgentPackDefaults.OfficialCatalogUrl, result.Output);
+        Assert.Contains("not downloaded", result.Output);
+    }
+
+    [Fact]
+    public void CatalogCanRequireANewerAgentPackVersion()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        File.AppendAllText(Path.Combine(WorkDir(temp), "catalog.yaml"), "\nminimumAgentPackVersion: 99.0.0\n");
+
+        var result = RunCli(temp, "list");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("requires AgentPack 99.0.0 or newer", result.Output + result.Error);
+        Assert.Contains("dotnet tool update -g AgentPack", result.Output + result.Error);
+    }
+
+    [Fact]
+    public void SubmitPrepareOnlyCreatesAValidatedProposalBranchWithoutChangingMain()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "existing-skill");
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var input = Path.Combine(temp.Path, "proposed-skill");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Proposed skill\n");
+        var environment = new Dictionary<string, string>
+        {
+            ["AGENTPACK_CATALOG_URL"] = WorkDir(temp),
+            ["GIT_AUTHOR_NAME"] = "AgentPack Tests",
+            ["GIT_AUTHOR_EMAIL"] = "agentpack-tests@example.invalid",
+            ["GIT_COMMITTER_NAME"] = "AgentPack Tests",
+            ["GIT_COMMITTER_EMAIL"] = "agentpack-tests@example.invalid"
+        };
+
+        var result = RunCliWithEnvironment(temp, environment,
+            "submit", "skill", input, "--description", "A proposed test skill.", "--prepare-only");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Prepared 'proposed-skill'", result.Output);
+        Assert.Contains("Nothing was pushed", result.Output);
+        Assert.False(Directory.Exists(Path.Combine(WorkDir(temp), "assets", "skills", "proposed-skill")));
+
+        var submissions = Path.Combine(temp.Path, "home", ".agentpack", "submissions");
+        var checkout = Assert.Single(Directory.GetDirectories(submissions));
+        Assert.True(File.Exists(Path.Combine(checkout, "assets", "skills", "proposed-skill", "content", "SKILL.md")));
+        Assert.True(File.Exists(Path.Combine(checkout, "catalog.lock.yaml")));
+        var branch = ProcessRunner.Run("git", ["branch", "--show-current"], checkout);
+        Assert.Equal(0, branch.ExitCode);
+        Assert.StartsWith("agentpack/submit/proposed-skill-", branch.Output.Trim());
+    }
+
+    [Fact]
+    public void SubmitLocalFolderCopiesOnlyThePreviewedSafeFiles()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var input = Path.Combine(temp.Path, "folder-skill");
+        Directory.CreateDirectory(Path.Combine(input, "references"));
+        Directory.CreateDirectory(Path.Combine(input, "node_modules", "not-published"));
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Folder skill\n");
+        File.WriteAllText(Path.Combine(input, "references", "guide.md"), "# Guide\n");
+        File.WriteAllText(Path.Combine(input, "node_modules", "not-published", "secret.txt"), "ignored\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--prepare-only");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Files to include: 2", result.Output);
+        Assert.Contains("ignored: node_modules/", result.Output);
+        var checkout = Assert.Single(Directory.GetDirectories(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+        var content = Path.Combine(checkout, "assets", "skills", "folder-skill", "content");
+        Assert.True(File.Exists(Path.Combine(content, "SKILL.md")));
+        Assert.True(File.Exists(Path.Combine(content, "references", "guide.md")));
+        Assert.False(Directory.Exists(Path.Combine(content, "node_modules")));
+    }
+
+    [Fact]
+    public void SubmitRejectsSecretLikeFilesBeforeCreatingABranch()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+        var input = Path.Combine(temp.Path, "unsafe-skill");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Unsafe\n");
+        File.WriteAllText(Path.Combine(input, ".env"), "TOKEN=real-secret\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("secret-like file: .env", result.Output + result.Error);
+        Assert.False(Directory.Exists(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+    }
+
+    [Fact]
+    public void SubmitRejectsSymlinksBeforeCreatingABranch()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+        var input = Path.Combine(temp.Path, "linked-skill");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Linked\n");
+        var outside = Path.Combine(temp.Path, "outside.md");
+        File.WriteAllText(outside, "must not be copied\n");
+        File.CreateSymbolicLink(Path.Combine(input, "linked.md"), outside);
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("'linked.md' is a symlink", result.Output + result.Error);
+        Assert.False(Directory.Exists(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+    }
+
+    [Fact]
+    public void SubmitHookAcceptsASingleScriptFileAndInfersItsCommand()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+        var script = Path.Combine(temp.Path, "check-secrets.sh");
+        File.WriteAllText(script, "#!/bin/sh\nexit 0\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "hook", script, "--tool", "Bash", "--prepare-only");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Hook: preToolUse -> check-secrets.sh (30s)", result.Output);
+        var checkout = Assert.Single(Directory.GetDirectories(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+        var manifest = File.ReadAllText(Path.Combine(checkout, "assets", "hooks", "check-secrets", "agentpack.yaml"));
+        Assert.Contains("command: 'check-secrets.sh'", manifest);
+        Assert.True(File.Exists(Path.Combine(checkout, "assets", "hooks", "check-secrets", "content", "check-secrets.sh")));
+    }
+
+    [Fact]
+    public void SubmitHookFolderRequiresCommandWhenEntryIsAmbiguous()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+        var input = Path.Combine(temp.Path, "ambiguous-hook");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "first.sh"), "#!/bin/sh\n");
+        File.WriteAllText(Path.Combine(input, "second.sh"), "#!/bin/sh\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "hook", input, "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("more than one possible entry file", result.Output + result.Error);
+        Assert.Contains("--command", result.Output + result.Error);
+    }
+
+    [Fact]
+    public void SubmitSingleFileKindRejectsAnAmbiguousFolder()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+        var input = Path.Combine(temp.Path, "prompt-folder");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "prompt.md"), "Do the work.\n");
+        File.WriteAllText(Path.Combine(input, "notes.md"), "Author notes.\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "prompt", input, "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("installs as one provider-native file", result.Output + result.Error);
+        Assert.Contains("Use a skill", result.Output + result.Error);
+    }
+
+    [Fact]
+    public void SubmitMcpCreatesTypedMetadataWithoutSecretValuesOrPlaceholders()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "mcp", "github", "--command", "github-mcp-server",
+            "--arg", "stdio", "--env", "GITHUB_TOKEN", "--prepare-only");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("MCP: stdio -> github-mcp-server", result.Output);
+        var checkout = Assert.Single(Directory.GetDirectories(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+        var manifest = File.ReadAllText(Path.Combine(checkout, "assets", "mcp", "github", "agentpack.yaml"));
+        Assert.Contains("command: 'github-mcp-server'", manifest);
+        Assert.Contains("envVars: ['GITHUB_TOKEN']", manifest);
+        Assert.DoesNotContain("replace-me", manifest);
+    }
+
+    [Fact]
+    public void SubmitMcpRejectsSecretValuesBeforeCreatingABranch()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "mcp", "github", "--command", "github-mcp-server",
+            "--env", "GITHUB_TOKEN=secret", "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("expects an environment variable name", result.Output + result.Error);
+        Assert.False(Directory.Exists(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+    }
+
+    [Fact]
+    public void SubmitAutomaticallyPinsAnExternalRepositoryToItsCurrentCommit()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var upstream = Path.Combine(temp.Path, "upstream-skill.git");
+        Directory.CreateDirectory(upstream);
+        File.WriteAllText(Path.Combine(upstream, "SKILL.md"), "# External skill\n");
+        InitializeGitRepo(upstream, "Initial external skill");
+        var expectedRef = ProcessRunner.Run("git", ["rev-parse", "HEAD"], upstream).Output.Trim();
+        var environment = GitEnvironment(WorkDir(temp));
+
+        var result = RunCliWithEnvironment(temp, environment,
+            "submit", "skill", upstream, "--description", "An external test skill.", "--prepare-only");
+
+        Assert.True(result.ExitCode == 0, result.Output + Environment.NewLine + result.Error);
+        Assert.Contains($"Pinned external source at {expectedRef}", result.Output);
+        var submissions = Path.Combine(temp.Path, "home", ".agentpack", "submissions");
+        var checkout = Assert.Single(Directory.GetDirectories(submissions));
+        var manifest = File.ReadAllText(Path.Combine(checkout, "assets", "skills", "upstream-skill", "agentpack.yaml"));
+        Assert.Contains($"url: '{upstream}'", manifest);
+        Assert.Contains($"ref: '{expectedRef}'", manifest);
+    }
+
+    [Fact]
+    public void SubmitUpdateReplacesTheAssetAndBumpsItsVersion()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "existing-skill");
+        // The published revision ships two files; the new one drops the second.
+        var published = Path.Combine(WorkDir(temp), "assets", "skills", "existing-skill", "content");
+        File.WriteAllText(Path.Combine(published, "legacy.md"), "# Legacy\n");
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var input = Path.Combine(temp.Path, "existing-skill");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Revised skill\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--update", "--prepare-only");
+
+        Assert.True(result.ExitCode == 0, result.Output + Environment.NewLine + result.Error);
+        Assert.Contains("update existing-skill", result.Output);
+        var checkout = Assert.Single(Directory.GetDirectories(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+        var content = Path.Combine(checkout, "assets", "skills", "existing-skill", "content");
+        Assert.Equal("# Revised skill\n", File.ReadAllText(Path.Combine(content, "SKILL.md")));
+        Assert.False(File.Exists(Path.Combine(content, "legacy.md")));
+
+        var manifest = File.ReadAllText(Path.Combine(checkout, "assets", "skills", "existing-skill", "agentpack.yaml"));
+        Assert.Contains("version: '1.0.1'", manifest);
+
+        // The removal must be part of the proposal, not just of the working tree.
+        var tracked = ProcessRunner.Run("git", ["ls-files", "--", "assets/skills/existing-skill"], checkout);
+        Assert.DoesNotContain("legacy.md", tracked.Output);
+        var pending = ProcessRunner.Run("git", ["status", "--porcelain"], checkout);
+        Assert.Equal("", pending.Output.Trim());
+    }
+
+    [Fact]
+    public void SubmitRefusesAnExistingAssetWithoutUpdateBeforeCloning()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "existing-skill");
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var input = Path.Combine(temp.Path, "existing-skill");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Revised skill\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("already in the catalog", result.Output + result.Error);
+        Assert.Contains("--update", result.Output + result.Error);
+        Assert.False(Directory.Exists(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+    }
+
+    [Fact]
+    public void SubmitUpdateRefusesAnAssetThatIsNotInTheCatalogYet()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var input = Path.Combine(temp.Path, "brand-new");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# New\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--update", "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("nothing to update", result.Output + result.Error);
+        Assert.False(Directory.Exists(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+    }
+
+    [Fact]
+    public void SubmitUpdateRejectsAVersionThatIsNotNewerThanTheCatalog()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "existing-skill");
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+
+        var input = Path.Combine(temp.Path, "existing-skill");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Revised\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--update", "--version", "1.0.0", "--prepare-only");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("not newer than", result.Output + result.Error);
+        Assert.Contains("--version 1.0.1", result.Output + result.Error);
+    }
+
+    /// <summary>An unrelated asset's checksum must not ride along in a one-asset proposal.</summary>
+    [Fact]
+    public void SubmitOnlyLocksTheSubmittedAsset()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+        WriteSkill(temp, "untouched-skill");
+        InitializeGitRepo(WorkDir(temp), "Initial catalog");
+        Assert.Equal(0, RunCli(temp, "catalog", "lock").ExitCode);
+        var lockedBefore = File.ReadAllText(Path.Combine(WorkDir(temp), "catalog.lock.yaml"));
+        InitializeGitCommit(WorkDir(temp), "Lock catalog");
+
+        var input = Path.Combine(temp.Path, "added-skill");
+        Directory.CreateDirectory(input);
+        File.WriteAllText(Path.Combine(input, "SKILL.md"), "# Added\n");
+
+        var result = RunCliWithEnvironment(temp, GitEnvironment(WorkDir(temp)),
+            "submit", "skill", input, "--prepare-only");
+
+        Assert.True(result.ExitCode == 0, result.Output + Environment.NewLine + result.Error);
+        var checkout = Assert.Single(Directory.GetDirectories(Path.Combine(temp.Path, "home", ".agentpack", "submissions")));
+        var lockedAfter = File.ReadAllText(Path.Combine(checkout, "catalog.lock.yaml"));
+        Assert.Contains("added-skill", lockedAfter);
+        foreach (var line in lockedBefore.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            Assert.Contains(line.Trim(), lockedAfter);
+        }
     }
 
     [Fact]
@@ -160,75 +501,15 @@ public class CliEndToEndTests
     }
 
     [Fact]
-    public void NewScaffoldsManifestAndContent()
-    {
-        using var temp = new TempDir();
-        WriteCatalog(temp);
-        var result = RunCli(temp, "new", "skills", "grill-me", "--group", "review");
-        Assert.Equal(0, result.ExitCode);
-
-        var manifest = Path.Combine(WorkDir(temp), "assets", "skills", "grill-me", "agentpack.yaml");
-        Assert.True(File.Exists(manifest));
-        Assert.True(File.Exists(Path.Combine(WorkDir(temp), "assets", "skills", "grill-me", "content", "SKILL.md")));
-        var yaml = File.ReadAllText(manifest);
-        Assert.Contains("name: Grill Me", yaml);
-        Assert.DoesNotContain("checksum", yaml);
-
-        // A second run without --force refuses to overwrite.
-        var again = RunCli(temp, "new", "skills", "grill-me");
-        Assert.NotEqual(0, again.ExitCode);
-        Assert.Contains("--force", again.Output + again.Error);
-    }
-
-    [Fact]
-    public void ImportRequiresPinnedRef()
-    {
-        using var temp = new TempDir();
-        WriteCatalog(temp);
-
-        var floating = RunCli(temp, "import", "https://github.com/example/skills/tree/main/skills/pdf");
-        Assert.NotEqual(0, floating.ExitCode);
-        Assert.Contains("pin", (floating.Output + floating.Error).ToLowerInvariant());
-
-        var pinned = RunCli(temp, "import",
-            "https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d");
-        Assert.Equal(0, pinned.ExitCode);
-        var manifest = File.ReadAllText(Path.Combine(WorkDir(temp), "assets", "skills", "pdf", "agentpack.yaml"));
-        Assert.Contains("url: https://github.com/example/skills/tree/main/skills/pdf", manifest);
-        Assert.Contains("ref: 9d2f1ae187231d8199c64b5b762e1bdf2244733d", manifest);
-        Assert.DoesNotContain("license:", manifest);
-        Assert.Equal(0, RunCli(temp, "catalog", "validate", "--no-checksums").ExitCode);
-
-        var plan = RunCli(temp, "plan", "pdf", "--claude", "--project");
-        Assert.Equal(0, plan.ExitCode);
-        Assert.Contains("Source", plan.Output);
-        Assert.Contains("example/skills", plan.Output);
-    }
-
-    [Fact]
-    public void ImportCanRecordAnOptionalLicense()
-    {
-        using var temp = new TempDir();
-        WriteCatalog(temp);
-        const string source = "https://github.com/example/skills/tree/main/skills/pdf@9d2f1ae187231d8199c64b5b762e1bdf2244733d";
-
-        var result = RunCli(temp, "import", source, "--license", "MIT");
-
-        Assert.Equal(0, result.ExitCode);
-        var manifest = File.ReadAllText(Path.Combine(WorkDir(temp), "assets", "skills", "pdf", "agentpack.yaml"));
-        Assert.Contains("license: MIT", manifest);
-    }
-
-    [Fact]
-    public void AddInstallsAndStatusReportsIt()
+    public void InstallInstallsAndStatusReportsIt()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
         WriteSkill(temp, "demo-skill");
         Directory.CreateDirectory(Path.Combine(WorkDir(temp), ".claude"));
 
-        var add = RunCli(temp, "add", "demo-skill", "--claude", "--project", "--yes");
-        Assert.Equal(0, add.ExitCode);
+        var install = RunCli(temp, "install", "demo-skill", "--claude", "--project", "--yes");
+        Assert.Equal(0, install.ExitCode);
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "demo-skill", "SKILL.md")));
 
         var status = RunCli(temp, "status", "--project");
@@ -248,8 +529,8 @@ public class CliEndToEndTests
         Directory.CreateDirectory(extrasDir);
         File.WriteAllText(Path.Combine(extrasDir, "openai.yaml"), "display_name: Code Review\ninterface:\n  icon: magnifying-glass\n");
 
-        var add = RunCli(temp, "add", "code-review", "--claude", "--cursor", "--copilot", "--codex", "--project", "--yes");
-        Assert.Equal(0, add.ExitCode);
+        var install = RunCli(temp, "install", "code-review", "--claude", "--cursor", "--copilot", "--codex", "--project", "--yes");
+        Assert.Equal(0, install.ExitCode);
         string[] skillRoots =
         [
             Path.Combine(".claude", "skills", "code-review"),
@@ -272,17 +553,19 @@ public class CliEndToEndTests
     }
 
     [Fact]
-    public void NewAgentThenAddInstallsEveryProviderFormat()
+    public void AgentInstallsEveryProviderFormat()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
+        var asset = Path.Combine(WorkDir(temp), "assets", "agents", "code-reviewer");
+        Directory.CreateDirectory(Path.Combine(asset, "content"));
+        File.WriteAllText(Path.Combine(asset, "content", "AGENT.md"),
+            "---\nname: code-reviewer\ndescription: Review code.\n---\n\nReview the code.\n");
+        File.WriteAllText(Path.Combine(asset, "agentpack.yaml"),
+            "name: Code Reviewer\nversion: 1.0.0\ndescription: Review code.\ngroups: [review]\n");
 
-        var scaffold = RunCli(temp, "new", "agents", "code-reviewer", "--group", "review");
-        Assert.Equal(0, scaffold.ExitCode);
-        Assert.True(File.Exists(Path.Combine(WorkDir(temp), "assets", "agents", "code-reviewer", "content", "AGENT.md")));
-
-        var add = RunCli(temp, "add", "code-reviewer", "--claude", "--cursor", "--copilot", "--codex", "--project", "--yes");
-        Assert.Equal(0, add.ExitCode);
+        var install = RunCli(temp, "install", "code-reviewer", "--claude", "--cursor", "--copilot", "--codex", "--project", "--yes");
+        Assert.Equal(0, install.ExitCode);
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "agents", "code-reviewer.md")));
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".cursor", "agents", "code-reviewer.md")));
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".github", "agents", "code-reviewer.agent.md")));
@@ -293,7 +576,7 @@ public class CliEndToEndTests
     }
 
     [Fact]
-    public void AddRuleInstallsCursorMdcAndClaudeTranslation()
+    public void InstallRuleInstallsCursorMdcAndClaudeTranslation()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
@@ -304,8 +587,8 @@ public class CliEndToEndTests
         File.WriteAllText(Path.Combine(dir, "agentpack.yaml"),
             "name: TS Style\nversion: 1.0.0\ndescription: Test rule.\ngroups: [review]\n");
 
-        var add = RunCli(temp, "add", "ts-style", "--claude", "--cursor", "--project", "--yes");
-        Assert.Equal(0, add.ExitCode);
+        var install = RunCli(temp, "install", "ts-style", "--claude", "--cursor", "--project", "--yes");
+        Assert.Equal(0, install.ExitCode);
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".cursor", "rules", "ts-style.mdc")));
 
         var claudeRule = File.ReadAllText(Path.Combine(WorkDir(temp), ".claude", "rules", "ts-style.md"));
@@ -314,7 +597,7 @@ public class CliEndToEndTests
         Assert.DoesNotContain("globs", claudeRule);
 
         // Re-adding is a no-op, and remove deletes both provider files.
-        var again = RunCli(temp, "add", "ts-style", "--claude", "--cursor", "--project", "--yes");
+        var again = RunCli(temp, "install", "ts-style", "--claude", "--cursor", "--project", "--yes");
         Assert.Equal(0, again.ExitCode);
         var remove = RunCli(temp, "remove", "ts-style", "--project", "--yes");
         Assert.Equal(0, remove.ExitCode);
@@ -323,13 +606,13 @@ public class CliEndToEndTests
     }
 
     [Fact]
-    public void AddUnknownAssetSuggestsNearest()
+    public void InstallUnknownAssetSuggestsNearest()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
         WriteSkill(temp, "demo-skill");
 
-        var result = RunCli(temp, "add", "demo-skil", "--claude", "--project", "--yes");
+        var result = RunCli(temp, "install", "demo-skil", "--claude", "--project", "--yes");
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("demo-skill", result.Output + result.Error);
     }
@@ -341,44 +624,44 @@ public class CliEndToEndTests
         WriteCatalog(temp);
         WriteSkill(temp, "banned", "status: blocked");
 
-        var result = RunCli(temp, "add", "banned", "--claude", "--project", "--yes");
+        var result = RunCli(temp, "install", "banned", "--claude", "--project", "--yes");
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("blocked", (result.Output + result.Error).ToLowerInvariant());
     }
 
     [Fact]
-    public void AddWithoutTerminalAndWithoutArgsGivesGuidance()
+    public void InstallWithoutTerminalAndWithoutArgsGivesGuidance()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
         WriteSkill(temp, "demo-skill");
 
-        var result = RunCli(temp, "add", "--claude", "--project");
+        var result = RunCli(temp, "install", "--claude", "--project");
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("agentpack add grill-me", result.Output + result.Error);
+        Assert.Contains("agentpack install grill-me", result.Output + result.Error);
     }
 
     [Fact]
-    public void AddEverythingWithYesIsRefused()
+    public void InstallEverythingWithYesIsRefused()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
         WriteSkill(temp, "demo-skill");
 
-        var result = RunCli(temp, "add", "--claude", "--project", "--yes");
+        var result = RunCli(temp, "install", "--claude", "--project", "--yes");
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("entire catalog", result.Output + result.Error);
     }
 
     [Fact]
-    public void AddByKindInstallsAllOfKindWhenNonInteractive()
+    public void InstallByKindInstallsAllOfKindWhenNonInteractive()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
         WriteSkill(temp, "skill-one");
         WriteSkill(temp, "skill-two");
 
-        var result = RunCli(temp, "add", "skills", "--claude", "--project", "--yes");
+        var result = RunCli(temp, "install", "skills", "--claude", "--project", "--yes");
         Assert.Equal(0, result.ExitCode);
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "skill-one", "SKILL.md")));
         Assert.True(File.Exists(Path.Combine(WorkDir(temp), ".claude", "skills", "skill-two", "SKILL.md")));
@@ -415,20 +698,20 @@ public class CliEndToEndTests
         var result = RunCli(temp, "status", "--project");
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("Nothing installed", result.Output);
-        Assert.Contains("agentpack add", result.Output);
+        Assert.Contains("agentpack install", result.Output);
     }
 
     [Fact]
-    public void PlanCollapsesUpToDateRows()
+    public void InstallDryRunCollapsesUpToDateRows()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
         var ids = new[] { "skill-aa", "skill-bb", "skill-cc", "skill-dd", "skill-ee", "skill-ff", "skill-gg" };
         foreach (var id in ids) WriteSkill(temp, id);
 
-        Assert.Equal(0, RunCli(temp, "add", "skills", "--claude", "--project", "--yes").ExitCode);
+        Assert.Equal(0, RunCli(temp, "install", "skills", "--claude", "--project", "--yes").ExitCode);
 
-        var plan = RunCli(temp, "plan", "skills", "--claude", "--project");
+        var plan = RunCli(temp, "install", "skills", "--claude", "--project", "--dry-run");
         Assert.Equal(0, plan.ExitCode);
         Assert.Contains("7 already up to date", plan.Output);
         Assert.Contains("not shown", plan.Output);
@@ -442,11 +725,11 @@ public class CliEndToEndTests
         WriteCatalog(temp);
         var ids = new[] { "skill-aa", "skill-bb", "skill-cc", "skill-dd", "skill-ee", "skill-ff", "skill-gg" };
         foreach (var id in ids) WriteSkill(temp, id);
-        Assert.Equal(0, RunCli(temp, "add", "skills", "--claude", "--project", "--yes").ExitCode);
+        Assert.Equal(0, RunCli(temp, "install", "skills", "--claude", "--project", "--yes").ExitCode);
 
-        // One new asset makes the second add actionable; the 7 untouched installs collapse.
+        // One new asset makes the second install actionable; the 7 untouched installs collapse.
         WriteSkill(temp, "skill-new");
-        var again = RunCli(temp, "add", "skills", "--claude", "--project", "--yes");
+        var again = RunCli(temp, "install", "skills", "--claude", "--project", "--yes");
         Assert.Equal(0, again.ExitCode);
         Assert.Contains("installed skill-new", again.Output);
         Assert.Contains("7 already up to date", again.Output);
@@ -500,7 +783,42 @@ public class CliEndToEndTests
             $"name: {id}\nversion: 1.0.0\ndescription: {description}\ngroups: {groups}\n{extraYaml}\n");
     }
 
+    private static void InitializeGitRepo(string directory, string message)
+    {
+        Assert.Equal(0, ProcessRunner.Run("git", ["init", "-b", "main"], directory).ExitCode);
+        Assert.Equal(0, ProcessRunner.Run("git", ["config", "user.name", "AgentPack Tests"], directory).ExitCode);
+        Assert.Equal(0, ProcessRunner.Run("git", ["config", "user.email", "agentpack-tests@example.invalid"], directory).ExitCode);
+        InitializeGitCommit(directory, message);
+    }
+
+    private static void InitializeGitCommit(string directory, string message)
+    {
+        Assert.Equal(0, ProcessRunner.Run("git", ["add", "."], directory).ExitCode);
+        Assert.Equal(0, ProcessRunner.Run("git", ["commit", "-m", message], directory).ExitCode);
+    }
+
+    private static Dictionary<string, string> GitEnvironment(string catalogUrl) => new()
+    {
+        ["AGENTPACK_CATALOG_URL"] = catalogUrl,
+        ["GIT_AUTHOR_NAME"] = "AgentPack Tests",
+        ["GIT_AUTHOR_EMAIL"] = "agentpack-tests@example.invalid",
+        ["GIT_COMMITTER_NAME"] = "AgentPack Tests",
+        ["GIT_COMMITTER_EMAIL"] = "agentpack-tests@example.invalid"
+    };
+
     private static (int ExitCode, string Output, string Error) RunCli(TempDir temp, params string[] args)
+        => RunCliCore(temp, null, args);
+
+    private static (int ExitCode, string Output, string Error) RunCliWithEnvironment(
+        TempDir temp,
+        IReadOnlyDictionary<string, string> environment,
+        params string[] args)
+        => RunCliCore(temp, environment, args);
+
+    private static (int ExitCode, string Output, string Error) RunCliCore(
+        TempDir temp,
+        IReadOnlyDictionary<string, string>? environment,
+        params string[] args)
     {
         var cliDll = Path.Combine(AppContext.BaseDirectory, "agentpack.dll");
         Assert.True(File.Exists(cliDll), $"CLI binary not found at {cliDll}");
@@ -521,6 +839,10 @@ public class CliEndToEndTests
         start.Environment["AGENTPACK_HOME"] = home;
         start.Environment["CI"] = "1";
         start.Environment["NO_COLOR"] = "1";
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment) start.Environment[name] = value;
+        }
 
         using var process = Process.Start(start)!;
         var stdout = process.StandardOutput.ReadToEndAsync();

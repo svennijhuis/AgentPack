@@ -13,12 +13,21 @@ public sealed class CatalogLockWriter
         _paths = paths;
     }
 
-    public sealed record Result(CatalogLockFile Lock, IReadOnlyList<string> Messages);
+    /// <summary>
+    /// <paramref name="ContentPaths"/> is the resolved content directory per asset id.
+    /// Generating a lock already fetches and hashes every asset, so a caller that needs
+    /// to inspect that content can reuse these instead of resolving (and re-hashing) it.
+    /// </summary>
+    public sealed record Result(
+        CatalogLockFile Lock,
+        IReadOnlyList<string> Messages,
+        IReadOnlyDictionary<string, string> ContentPaths);
 
     public Result Generate(LoadedCatalog loaded, bool fetchExternal)
     {
         var lockFile = new CatalogLockFile();
         var messages = new List<string>();
+        var contentPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var resolver = new ExternalResolver(_paths);
 
         foreach (var asset in loaded.Catalog.Assets.OrderBy(x => x.Id, StringComparer.Ordinal))
@@ -27,13 +36,14 @@ public sealed class CatalogLockWriter
             {
                 case AssetSource.Local local:
                     {
-                        var contentPath = Path.GetFullPath(Path.Combine(loaded.RootFor(asset), local.RelativePath));
+                        var contentPath = Path.GetFullPath(Path.Combine(loaded.CatalogRoot, local.RelativePath));
                         if (!File.Exists(contentPath) && !Directory.Exists(contentPath))
                         {
                             messages.Add($"{asset.Id}: local content missing at {local.RelativePath} — skipped.");
                             continue;
                         }
 
+                        contentPaths[asset.Id] = contentPath;
                         lockFile.Entries.Add(new CatalogLockEntry
                         {
                             Id = asset.Id,
@@ -60,6 +70,7 @@ public sealed class CatalogLockWriter
                             // Checksum the exact content at the pinned ref so installs can detect tampering.
                             var bare = asset with { Source = external with { Checksum = null } };
                             var contentPath = resolver.ResolveToCache(bare);
+                            contentPaths[asset.Id] = contentPath;
                             entry.Checksum = ContentHash.Compute(contentPath);
                         }
                         else
@@ -73,6 +84,6 @@ public sealed class CatalogLockWriter
             }
         }
 
-        return new Result(lockFile, messages);
+        return new Result(lockFile, messages, contentPaths);
     }
 }

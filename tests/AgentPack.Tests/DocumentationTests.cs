@@ -9,12 +9,13 @@ public class DocumentationTests
         var reference = File.ReadAllText(Path.Combine(repoRoot, "docs", "cli-reference.md"));
         string[] commands =
         [
-            "agentpack init", "agentpack list", "agentpack find", "agentpack groups", "agentpack new",
-            "agentpack import", "agentpack add", "agentpack plan", "agentpack remove", "agentpack upgrade",
+            "agentpack list", "agentpack search", "agentpack groups", "agentpack install", "agentpack submit",
+            "agentpack remove", "agentpack update",
             "agentpack outdated", "agentpack status", "agentpack diff", "agentpack pin", "agentpack unpin",
-            "agentpack doctor", "agentpack catalog validate", "agentpack catalog lock",
+            "agentpack doctor", "agentpack catalog use", "agentpack catalog status", "agentpack catalog sync",
+            "agentpack catalog validate", "agentpack catalog lock",
             "agentpack catalog verify-external", "agentpack profile list", "agentpack profile plan",
-            "agentpack profile apply", "agentpack source add", "agentpack source list", "agentpack source sync"
+            "agentpack profile apply"
         ];
 
         foreach (var command in commands)

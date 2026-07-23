@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using AgentPack.Cli.Ui;
 using AgentPack.Core;
+using AgentPack.Core.Primitives;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -12,16 +13,23 @@ public sealed class CliSession
     public CliSession()
     {
         Paths = new AgentPackPaths();
-        Sources = new SourceManager(Paths);
+        Sources = new SourceManager(Paths, AgentPackDefaults.OfficialCatalog());
     }
 
     public AgentPackPaths Paths { get; }
     public SourceManager Sources { get; }
 
-    public LoadedCatalog LoadCatalog()
+    public LoadedCatalog LoadCatalog(bool refreshRemoteNow = false)
     {
-        var loaded = new CatalogLayerLoader(Sources, Paths).Load();
+        var loaded = new CatalogLayerLoader(Sources).Load(refreshRemoteNow: refreshRemoteNow);
         Output.Warnings(loaded.Warnings);
+        if (loaded.Catalog.MinimumAgentPackVersion is { } minimum &&
+            SemVersion.TryParse(VersionInfo.Current, out var current) && current < minimum)
+        {
+            throw new AgentPackException(
+                $"This catalog requires AgentPack {minimum} or newer; you are running {current}.",
+                "Update with 'dotnet tool update -g AgentPack' and retry.");
+        }
         return loaded;
     }
 
@@ -84,7 +92,7 @@ public class ProviderScopeSettings : ScopeSettings
         if (Codex) providers.Add(ProviderName.Codex);
         if (Copilot) providers.Add(ProviderName.Copilot);
         if (Cursor) providers.Add(ProviderName.Cursor);
-        foreach (var value in Provider.SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
+        foreach (var value in CommandHelpers.SplitList(Provider))
         {
             providers.Add(ProviderNames.Parse(value));
         }
@@ -92,21 +100,30 @@ public class ProviderScopeSettings : ScopeSettings
         return providers.Distinct().ToList();
     }
 
-    /// <summary>Explicit flags win; otherwise providers detected from the working directory.</summary>
-    public IReadOnlyList<ProviderName> ResolveProviders(AgentPackPaths paths)
+    /// <summary>
+    /// Explicit flags win; otherwise providers are detected from the root the install
+    /// actually writes to — the home directory for user scope, the repository for project
+    /// scope. Detecting only in the working directory made 'install --user' fail in any
+    /// folder that happened to have no provider config, which is the common global case.
+    /// </summary>
+    public IReadOnlyList<ProviderName> ResolveProviders(AgentPackPaths paths, InstallScope scope)
     {
         var explicitProviders = ExplicitProviders();
         if (explicitProviders.Count > 0) return explicitProviders;
 
-        var detected = ProviderRegistry.Detect(paths.WorkingDirectory);
-        if (detected.Count == 0)
-        {
-            throw new AgentPackException(
-                "No provider configuration detected in this directory.",
-                "Pass --claude, --codex, --copilot, --cursor, or -p <name>. 'agentpack doctor' shows what is detected.");
-        }
+        var root = scope == InstallScope.User ? paths.ProviderHome : paths.WorkingDirectory;
+        var detected = ProviderRegistry.Detect(root);
+        if (detected.Count > 0) return detected;
 
-        return detected;
+        // A project checkout with no provider files still installs for whatever the
+        // developer already uses, so fall back to the other root before giving up.
+        var fallbackRoot = scope == InstallScope.User ? paths.WorkingDirectory : paths.ProviderHome;
+        detected = ProviderRegistry.Detect(fallbackRoot);
+        if (detected.Count > 0) return detected;
+
+        throw new AgentPackException(
+            $"No provider configuration detected in {root}.",
+            "Pass --claude, --codex, --copilot, --cursor, or -p <name>. 'agentpack doctor' shows what is detected.");
     }
 }
 
@@ -136,7 +153,14 @@ public class ApplySettings : ProviderScopeSettings
 public static class CommandHelpers
 {
     /// <summary>
-    /// Resolves list/add style targets: [kind] [id...] where the kind is optional
+    /// Expands a repeatable option into its values: every command accepts both
+    /// '-g a -g b' and '-g a,b', so the split lives in one place.
+    /// </summary>
+    public static IEnumerable<string> SplitList(IEnumerable<string> values) =>
+        values.SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    /// <summary>
+    /// Resolves list/install targets: [kind] [id...] where the kind is optional
     /// and unknown ids get a "did you mean" suggestion.
     /// </summary>
     public static List<Asset> SelectAssets(Catalog catalog, string[] targets, string[] groups, IReadOnlyList<ProviderName>? providerFilter)
@@ -157,7 +181,7 @@ public static class CommandHelpers
 
         if (kind is not null) assets = assets.Where(x => x.Kind == kind);
 
-        var groupList = groups.SelectMany(x => x.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).ToList();
+        var groupList = SplitList(groups).ToList();
         if (groupList.Count > 0)
         {
             assets = assets.Where(x => x.Groups.Any(g => groupList.Contains(g, StringComparer.OrdinalIgnoreCase)));

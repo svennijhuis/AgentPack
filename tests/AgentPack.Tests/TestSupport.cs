@@ -56,7 +56,7 @@ public static class TestData
     public static LoadedCatalog Loaded(string root, params Asset[] assets)
     {
         var catalog = new Catalog { Assets = assets };
-        return new LoadedCatalog(catalog, System.IO.Path.Combine(root, "catalog.yaml"), [root], new CatalogLockFile(), []);
+        return new LoadedCatalog(catalog, System.IO.Path.Combine(root, "catalog.yaml"), root, new CatalogLockFile(), []);
     }
 
     /// <summary>Writes a local asset's content folder and returns the asset pointing at it.</summary>

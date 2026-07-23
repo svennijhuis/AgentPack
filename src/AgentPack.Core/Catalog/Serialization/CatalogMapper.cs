@@ -14,21 +14,35 @@ public static class CatalogMapper
 
     public static Catalog Map(CatalogDto dto, List<CatalogIssue> issues)
     {
+        SemVersion? minimumAgentPackVersion = null;
+        if (!string.IsNullOrWhiteSpace(dto.MinimumAgentPackVersion))
+        {
+            if (SemVersion.TryParse(dto.MinimumAgentPackVersion, out var parsedMinimum))
+            {
+                minimumAgentPackVersion = parsedMinimum;
+            }
+            else
+            {
+                Error(issues, "catalog.minimumAgentPackVersion.invalid",
+                    $"minimumAgentPackVersion '{dto.MinimumAgentPackVersion}' is not valid semver (expected MAJOR.MINOR.PATCH).");
+            }
+        }
+
+        if (dto.Bundles is not null)
+        {
+            Error(issues, "catalog.bundles.removed",
+                "'bundles:' was removed from the catalog schema. List the assets directly on each profile and delete the bundles block.");
+        }
+
         var groups = dto.Groups.Select(g => MapGroup(g, issues)).Where(g => g is not null).Select(g => g!).ToList();
         var assets = dto.Assets.Select(a => MapAsset(a, issues)).Where(a => a is not null).Select(a => a!).ToList();
-        var profiles = dto.Profiles.Select(p => MapProfile(p, dto.Bundles, issues)).Where(p => p is not null).Select(p => p!).ToList();
-
-        if (dto.Bundles.Count > 0)
-        {
-            issues.Add(new CatalogIssue(IssueSeverity.Warning, "catalog.bundles.removed",
-                $"Bundles are no longer supported ({string.Join(", ", dto.Bundles.Select(b => b.Id))}). " +
-                "Their assets were folded into the profiles that referenced them. Move the asset lists into profiles and delete the bundles."));
-        }
+        var profiles = dto.Profiles.Select(p => MapProfile(p, issues)).Where(p => p is not null).Select(p => p!).ToList();
 
         return new Catalog
         {
             SchemaVersion = dto.SchemaVersion,
             CatalogVersion = dto.CatalogVersion,
+            MinimumAgentPackVersion = minimumAgentPackVersion,
             Groups = groups,
             Assets = assets,
             Profiles = profiles
@@ -253,7 +267,7 @@ public static class CatalogMapper
         };
     }
 
-    private static ProfileDefinition? MapProfile(ProfileDto dto, List<BundleDto> bundles, List<CatalogIssue> issues)
+    private static ProfileDefinition? MapProfile(ProfileDto dto, List<CatalogIssue> issues)
     {
         var context = $"profile '{dto.Id}'";
         if (string.IsNullOrWhiteSpace(dto.Id) || !IdPattern.IsMatch(dto.Id))
@@ -262,21 +276,10 @@ public static class CatalogMapper
             return null;
         }
 
-        // Migration path: bundles referenced by the profile are expanded into its asset list.
-        var assets = new List<string>(dto.Assets);
-        foreach (var bundleId in dto.Bundles)
+        if (dto.Bundles is not null)
         {
-            var bundle = bundles.FirstOrDefault(x => x.Id.Equals(bundleId, StringComparison.OrdinalIgnoreCase));
-            if (bundle is null)
-            {
-                Error(issues, "profile.bundle.unknown", $"{context}: references unknown bundle '{bundleId}' (bundles are removed — list assets directly).");
-                continue;
-            }
-
-            foreach (var assetId in bundle.Assets)
-            {
-                if (!assets.Contains(assetId, StringComparer.OrdinalIgnoreCase)) assets.Add(assetId);
-            }
+            Error(issues, "profile.bundles.removed",
+                $"{context}: 'bundles:' was removed. List the bundle's assets directly under the profile's assets:.");
         }
 
         return new ProfileDefinition
@@ -285,7 +288,7 @@ public static class CatalogMapper
             Name = string.IsNullOrWhiteSpace(dto.Name) ? dto.Id : dto.Name,
             Providers = MapProviders(dto.Providers, context, issues) is var p && dto.Providers.Count == 0 ? [] : p,
             Groups = dto.Groups,
-            Assets = assets
+            Assets = dto.Assets
         };
     }
 

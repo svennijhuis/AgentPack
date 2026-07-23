@@ -1,6 +1,6 @@
 # Groups & Profiles
 
-Two grouping concepts, with one job each. (Bundles existed in 0.1.0 and were removed — they duplicated profiles. See [breaking-changes.md](breaking-changes.md).)
+Two grouping concepts, with one job each.
 
 ## Groups — labels for discovery
 
@@ -8,7 +8,7 @@ Groups are metadata. They answer "what exists for my area?" and power filtering:
 
 ```bash
 agentpack list -g backend
-agentpack add -g security
+agentpack install -g security
 ```
 
 ```yaml
@@ -51,6 +51,6 @@ Onboarding a new team member is one command. Profile changes are catalog PRs, so
 | Need | Use |
 |---|---|
 | Label assets by area/domain | group |
-| Filter list/add | group |
+| Filter list/install | group |
 | Standard toolkit per team, one command | profile |
 | "Everyone on team X gets hook Y" | profile (assets or a group the hook is in) |

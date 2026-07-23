@@ -117,4 +117,4 @@ Provider formats move. When a provider changes its layout:
 
 1. Update the adapter and this document in the same PR.
 2. Update the matrix test (`ProviderAdapterTests`) and the golden merge tests (`MergerGoldenTests`).
-3. Note the change in `docs/breaking-changes.md` if installed paths move.
+3. Note the change in `CHANGELOG.md` if installed paths move.

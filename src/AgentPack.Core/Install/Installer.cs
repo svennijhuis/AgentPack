@@ -402,7 +402,7 @@ public sealed class Installer
     /// Lock entries written by agentpack &lt; 1.0 tracked the whole shared config file
     /// instead of the fragment they merged in. When the recomputed fragment matches
     /// what is in the file, record it so drift detection and removal work for this
-    /// entry too — the upgrade to 1.0 then needs no manual migration.
+    /// entry too — the update to 1.0 then needs no manual migration.
     /// </summary>
     private static void BackfillFragment(InstallPlanItem item, AgentPackLock lockFile, string root, InstallScope scope)
     {

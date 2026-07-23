@@ -5,7 +5,7 @@ using Spectre.Console.Cli;
 
 namespace AgentPack.Cli.Commands;
 
-public class AddCommand : Command<AddCommand.Settings>
+public class InstallCommand : Command<InstallCommand.Settings>
 {
     public class Settings : ApplySettings
     {
@@ -16,6 +16,10 @@ public class AddCommand : Command<AddCommand.Settings>
         [CommandOption("-g|--group <GROUP>")]
         [Description("Install everything in a group (repeatable or comma-separated).")]
         public string[] Groups { get; set; } = [];
+
+        [CommandOption("--dry-run")]
+        [Description("Show the install plan without changing provider files.")]
+        public bool DryRun { get; set; }
     }
 
     protected virtual bool Apply => true;
@@ -24,9 +28,15 @@ public class AddCommand : Command<AddCommand.Settings>
     public override int Execute(CommandContext context, Settings settings)
     {
         var session = new CliSession();
-        var loaded = session.LoadCatalog();
+        var apply = Apply && !settings.DryRun;
+
+        // Writing provider files off a stale catalog is worth a round trip; a dry run is
+        // reporting, so it rides the normal cache like list/search/status do.
+        var loaded = session.LoadCatalog(refreshRemoteNow: apply);
         var scope = settings.ResolveScope(session.Paths);
-        var providers = settings.ResolveProviders(session.Paths);
+        var providers = settings.ResolveProviders(session.Paths, scope);
+
+        Output.Info($"Catalog: {session.Sources.DescribeCatalog(loaded.PrimaryCatalogPath)}");
 
         var explicitIds = settings.Targets.Where(t => !AssetKinds.TryParse(t, out _) && t != "all").ToList();
         var filterGiven = settings.Targets.Length > 0 || settings.Groups.Length > 0;
@@ -35,14 +45,14 @@ public class AddCommand : Command<AddCommand.Settings>
         {
             throw new AgentPackException(
                 "Refusing to install the entire catalog with --yes.",
-                "Say what to install: ids, a kind ('agentpack add skills --yes'), or --group <name>.");
+                "Say what to install: ids, a kind ('agentpack install skills --yes'), or --group <name>.");
         }
 
         if (!filterGiven && !Output.CanPrompt)
         {
             throw new AgentPackException(
                 "No assets specified and no interactive terminal to pick from.",
-                "Pass asset ids ('agentpack add grill-me'), a kind ('agentpack add skills'), or --group <name>.");
+                "Pass asset ids ('agentpack install grill-me'), a kind ('agentpack install skills'), or --group <name>.");
         }
 
         var assets = CommandHelpers.EnforceStatus(
@@ -54,13 +64,13 @@ public class AddCommand : Command<AddCommand.Settings>
         }
 
         // Named ids install directly. A kind or group (or nothing) opens the checklist,
-        // filtered to that selection, so 'agentpack add skills --claude' lets you pick.
-        if (Apply && explicitIds.Count == 0 && assets.Count > 1 && Output.CanPrompt && !settings.Yes)
+        // filtered to that selection, so 'agentpack install skills --claude' lets you pick.
+        if (apply && explicitIds.Count == 0 && assets.Count > 1 && Output.CanPrompt && !settings.Yes)
         {
-            var title = settings.Targets.Length > 0 || settings.Groups.Length > 0
+            var pickerTitle = settings.Targets.Length > 0 || settings.Groups.Length > 0
                 ? "Select assets to install (filtered)"
                 : "Select assets to install";
-            assets = Prompts.SelectAssets(assets, title, preselectAll: false).ToList();
+            assets = Prompts.SelectAssets(assets, pickerTitle, preselectAll: false).ToList();
             if (assets.Count == 0)
             {
                 Output.Info("Nothing selected.");
@@ -69,14 +79,9 @@ public class AddCommand : Command<AddCommand.Settings>
         }
 
         var plan = new Installer(session.Paths).Plan(loaded, assets, providers, scope);
-        return CommandHelpers.RenderAndApply(session, loaded, plan, scope, settings, Title, Apply);
+        var title = apply ? Title : "Install plan (dry run)";
+        return CommandHelpers.RenderAndApply(session, loaded, plan, scope, settings, title, apply);
     }
-}
-
-public sealed class PlanCommand : AddCommand
-{
-    protected override bool Apply => false;
-    protected override string Title => "Plan (dry run)";
 }
 
 public sealed class RemoveCommand : Command<RemoveCommand.Settings>
@@ -122,12 +127,12 @@ public sealed class RemoveCommand : Command<RemoveCommand.Settings>
     }
 }
 
-public class UpgradeCommand : Command<UpgradeCommand.Settings>
+public class UpdateCommand : Command<UpdateCommand.Settings>
 {
     public class Settings : ApplySettings
     {
         [CommandArgument(0, "[targets]")]
-        [Description("Optional kind and/or asset ids to limit the upgrade.")]
+        [Description("Optional kind and/or asset ids to limit the update.")]
         public string[] Targets { get; set; } = [];
     }
 
@@ -136,7 +141,9 @@ public class UpgradeCommand : Command<UpgradeCommand.Settings>
     public override int Execute(CommandContext context, Settings settings)
     {
         var session = new CliSession();
-        var loaded = session.LoadCatalog();
+
+        // 'update' applies, so it refreshes; 'outdated' only reports and uses the cache.
+        var loaded = session.LoadCatalog(refreshRemoteNow: Apply);
         var scope = settings.ResolveScope(session.Paths);
         var explicitProviders = settings.ExplicitProviders();
 
@@ -163,17 +170,17 @@ public class UpgradeCommand : Command<UpgradeCommand.Settings>
         // Interactive checklist when upgrading everything from a terminal.
         if (Apply && settings.Targets.Length == 0 && items.Count > 1 && Output.CanPrompt && !settings.Yes)
         {
-            var chosen = Prompts.SelectAssets(items.Select(x => x.Asset).Distinct().ToList(), "Select assets to upgrade", preselectAll: true);
+            var chosen = Prompts.SelectAssets(items.Select(x => x.Asset).Distinct().ToList(), "Select assets to update", preselectAll: true);
             var chosenIds = chosen.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             items = items.Where(x => chosenIds.Contains(x.Asset.Id)).ToList();
         }
 
         var filtered = new InstallPlan(items, plan.Skipped);
-        return CommandHelpers.RenderAndApply(session, loaded, filtered, scope, settings, Apply ? "Upgrade plan" : "Outdated", Apply);
+        return CommandHelpers.RenderAndApply(session, loaded, filtered, scope, settings, Apply ? "Update plan" : "Outdated", Apply);
     }
 }
 
-public sealed class OutdatedCommand : UpgradeCommand
+public sealed class OutdatedCommand : UpdateCommand
 {
     protected override bool Apply => false;
 }

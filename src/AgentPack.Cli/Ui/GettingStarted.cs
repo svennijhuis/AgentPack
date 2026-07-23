@@ -11,21 +11,16 @@ public static class GettingStarted
         AnsiConsole.MarkupLine("[grey]Share approved AI skills, hooks, MCP servers, prompts, rules, and agents.[/]");
         AnsiConsole.WriteLine();
 
-        Section("Use an existing team catalog",
-            "agentpack source add org <git-url>",
-            "agentpack list",
-            "agentpack add");
-        Section("Start a personal or project catalog",
-            "agentpack init --overlay",
-            "agentpack new skills my-skill --overlay");
-        Section("Create assets for a shared catalog",
-            "agentpack init",
-            "agentpack new skills my-skill",
-            "agentpack import <pinned-url>@<commit-sha>");
-        Section("Daily commands",
-            "agentpack find <query>",
-            "agentpack status",
-            "agentpack upgrade");
+        Section("Install from the catalog",
+            "agentpack search <query>",
+            "agentpack install <id> --user",
+            "agentpack install <id> --project");
+        Section("Contribute to the catalog",
+            "agentpack submit <kind> <path-or-url-or-id>");
+        Section("Catalog and updates",
+            "agentpack catalog status",
+            "agentpack catalog sync",
+            "agentpack update");
 
         AnsiConsole.MarkupLine("[grey]Run[/] [blue]agentpack --help[/] [grey]for every command or[/] [blue]agentpack help <command>[/] [grey]for details.[/]");
     }

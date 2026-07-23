@@ -99,63 +99,85 @@ public class CatalogLoadingTests
     }
 
     [Fact]
-    public void BundlesAreMigratedIntoProfilesWithWarning()
+    public void RemovedBundleFieldsAreRejectedInsteadOfSilentlyMigrated()
     {
         using var temp = new TempDir();
         var root = Path.Combine(temp.Path, "work");
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, "catalog.yaml"), """
             schemaVersion: "1"
-            catalogVersion: 0.1.0
+            catalogVersion: 0.2.0
             bundles:
-              - id: backend-defaults
-                name: Backend Defaults
-                assets: [grill-me]
+              - id: old-bundle
+                assets: []
+            """);
+
+        var ex = Assert.Throws<AgentPackException>(() => Load(temp));
+        Assert.Contains("bundles", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RemovedProfileBundleFieldIsRejected()
+    {
+        using var temp = new TempDir();
+        var root = Path.Combine(temp.Path, "work");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "catalog.yaml"), """
+            schemaVersion: "1"
+            catalogVersion: 0.2.0
             profiles:
               - id: backend
                 name: Backend
-                bundles: [backend-defaults]
+                bundles: [old-bundle]
                 assets: []
             """);
-        WriteAsset(root, "skills", "grill-me", "name: Grill Me\nversion: 1.0.0\n");
 
-        var loaded = Load(temp);
-        var profile = Assert.Single(loaded.Catalog.Profiles);
-        Assert.Contains("grill-me", profile.Assets);
-        Assert.Contains(loaded.Warnings, w => w.Code == "catalog.bundles.removed");
+        var ex = Assert.Throws<AgentPackException>(() => Load(temp));
+        Assert.Contains("bundles", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// A catalog written by a newer agentpack must still load, otherwise
+    /// minimumAgentPackVersion could never report the upgrade and one contributor's
+    /// stray manifest key would break every command for every user.
+    /// </summary>
     [Fact]
-    public void ProjectOverlayAddsTeamAssets()
+    public void UnknownForwardCompatibleFieldsAreIgnoredRatherThanFatal()
     {
         using var temp = new TempDir();
         var root = Path.Combine(temp.Path, "work");
-        WriteMinimalCatalog(root);
-        WriteAsset(root, "skills", "org-skill", "name: Org Skill\nversion: 1.0.0\n");
-
-        var overlayRoot = Path.Combine(root, ".agentpack");
-        Directory.CreateDirectory(overlayRoot);
-        File.WriteAllText(Path.Combine(overlayRoot, "catalog.yaml"), "schemaVersion: \"1\"\n");
-        WriteAsset(overlayRoot, "prompts", "team-prompt", "name: Team Prompt\nversion: 1.0.0\n");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "catalog.yaml"), """
+            schemaVersion: "1"
+            catalogVersion: 0.2.0
+            registries:
+              - id: future-feature
+            """);
+        WriteAsset(root, "skills", "future-skill",
+            "name: Future Skill\nversion: 1.0.0\nmaintainer: someone@example.com\nreviewBoard: [a, b]\n");
 
         var loaded = Load(temp);
-        Assert.Equal(2, loaded.Catalog.Assets.Count);
-        Assert.Contains(loaded.Catalog.Assets, x => x.Id == "team-prompt" && x.Kind == AssetKind.Prompts);
+
+        var asset = Assert.Single(loaded.Catalog.Assets);
+        Assert.Equal("future-skill", asset.Id);
     }
 
     [Fact]
-    public void ProjectCatalogIsStandaloneWhenNoBaseCatalogIsConfigured()
+    public void MinimumAgentPackVersionSurvivesUnknownFieldsFromANewerRelease()
     {
         using var temp = new TempDir();
         var root = Path.Combine(temp.Path, "work");
-        var projectRoot = Path.Combine(root, ".agentpack");
-        WriteMinimalCatalog(projectRoot);
-        WriteAsset(projectRoot, "skills", "personal-skill", "name: Personal Skill\nversion: 1.0.0\n");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "catalog.yaml"), """
+            schemaVersion: "1"
+            catalogVersion: 0.2.0
+            minimumAgentPackVersion: 99.0.0
+            registries: []
+            """);
 
         var loaded = Load(temp);
 
-        Assert.Equal(Path.Combine(projectRoot, "catalog.yaml"), loaded.PrimaryCatalogPath);
-        Assert.Contains(loaded.Catalog.Assets, x => x.Id == "personal-skill");
+        Assert.Equal("99.0.0", loaded.Catalog.MinimumAgentPackVersion?.ToString());
     }
 
     [Fact]
@@ -167,13 +189,13 @@ public class CatalogLoadingTests
         WriteAsset(root, "skills", "hashed", "name: Hashed\nversion: 1.0.0\n");
 
         var paths = TestData.Paths(temp);
-        var loadedBefore = new CatalogLayerLoader(new SourceManager(paths), paths).Load();
+        var loadedBefore = new CatalogLayerLoader(new SourceManager(paths)).Load();
         Assert.Null(loadedBefore.EffectiveChecksum(loadedBefore.Catalog.Assets.Single()));
 
         var result = new CatalogLockWriter(paths).Generate(loadedBefore, fetchExternal: false);
         result.Lock.Save(CatalogLockFile.PathFor(loadedBefore.PrimaryCatalogPath));
 
-        var loadedAfter = new CatalogLayerLoader(new SourceManager(paths), paths).Load();
+        var loadedAfter = new CatalogLayerLoader(new SourceManager(paths)).Load();
         var checksum = loadedAfter.EffectiveChecksum(loadedAfter.Catalog.Assets.Single());
         Assert.NotNull(checksum);
         Assert.StartsWith("sha256:", checksum);
@@ -192,38 +214,13 @@ public class CatalogLoadingTests
         Run("git", ["add", "-A"], catalogRepo);
         Run("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"], catalogRepo);
 
-        // A consuming repo with no catalog.yaml and no prior 'source sync'.
+        // A consuming repo with no catalog.yaml and no prior catalog sync.
         var paths = TestData.Paths(temp, "consumer");
         var sources = new SourceManager(paths);
-        sources.AddSource("org", catalogRepo);
+        sources.UseSource("org", catalogRepo);
 
-        var loaded = new CatalogLayerLoader(sources, paths).Load();
+        var loaded = new CatalogLayerLoader(sources).Load();
         Assert.Contains(loaded.Catalog.Assets, x => x.Id == "org-skill");
-    }
-
-    [Fact]
-    public void RegisteredSourceIsMergedWithHigherPrecedenceProjectOverlay()
-    {
-        using var temp = new TempDir();
-        var catalogRepo = Path.Combine(temp.Path, "org-catalog");
-        WriteMinimalCatalog(catalogRepo);
-        WriteAsset(catalogRepo, "skills", "shared-skill", "name: Org Skill\nversion: 1.0.0\n");
-        Run("git", ["init", "-q", "-b", "main"], catalogRepo);
-        Run("git", ["add", "-A"], catalogRepo);
-        Run("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"], catalogRepo);
-
-        var paths = TestData.Paths(temp, "consumer");
-        var overlayRoot = Path.Combine(paths.WorkingDirectory, ".agentpack");
-        WriteMinimalCatalog(overlayRoot);
-        WriteAsset(overlayRoot, "skills", "shared-skill", "name: Team Override\nversion: 2.0.0\n");
-        WriteAsset(overlayRoot, "prompts", "team-only", "name: Team Only\nversion: 1.0.0\n");
-
-        var sources = new SourceManager(paths);
-        sources.AddSource("org", catalogRepo);
-        var loaded = new CatalogLayerLoader(sources, paths).Load();
-
-        Assert.Equal("2.0.0", loaded.Catalog.Assets.Single(x => x.Id == "shared-skill").Version.ToString());
-        Assert.Contains(loaded.Catalog.Assets, x => x.Id == "team-only");
     }
 
     private static void Run(string file, string[] args, string cwd)
@@ -261,6 +258,6 @@ public class CatalogLoadingTests
     private static LoadedCatalog Load(TempDir temp)
     {
         var paths = TestData.Paths(temp);
-        return new CatalogLayerLoader(new SourceManager(paths), paths).Load();
+        return new CatalogLayerLoader(new SourceManager(paths)).Load();
     }
 }

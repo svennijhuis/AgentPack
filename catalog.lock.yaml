@@ -9,10 +9,6 @@ entries:
   kind: skills
   sourceType: local
   checksum: sha256:b1aaceb0789b8aa19b2ee4a6ccff6189f10e9bfec6c424a039b6de39e9551555
-- id: platform-infra-review
-  kind: prompts
-  sourceType: local
-  checksum: sha256:5744d3436dbcae0a7ddeb8e04c9c846f23801ad5eecfa56f1070c687842854bd
 - id: secret-scan
   kind: hooks
   sourceType: local

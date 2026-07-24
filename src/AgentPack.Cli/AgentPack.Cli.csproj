@@ -13,7 +13,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>agentpack</ToolCommandName>
     <PackageId>AgentPack</PackageId>
-    <Version>0.3.1</Version>
+    <Version>0.3.2</Version>
     <Authors>AgentPack</Authors>
     <Description>Catalog-first installer for reviewed AI skills, hooks, MCP servers, instructions, prompts, rules, and agents.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

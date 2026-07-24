@@ -6,8 +6,6 @@ groups: ['productivity']
 tags: ['planning']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/obra/superpowers/tree/main/skills/brainstorming'
   ref: 'd884ae04edebef577e82ff7c4e143debd0bbec99'

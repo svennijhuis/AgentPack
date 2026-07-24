@@ -6,8 +6,6 @@ groups: [engineering, backend]
 tags: [mcp]
 # providers omitted = available for all providers
 owner: developer-platform
-status: experimental
-channel: beta
 mcp:
   server: github
   transport: stdio

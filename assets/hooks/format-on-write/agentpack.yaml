@@ -6,8 +6,6 @@ groups: ['engineering']
 tags: ['formatting', 'quality']
 owner: 'developer-platform'
 providers: ['claude', 'codex']
-status: experimental
-channel: beta
 hook:
   trigger: postToolUse
   tool: 'Edit|Write'

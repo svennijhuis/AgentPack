@@ -7,5 +7,3 @@ groups: [engineering, review]
 tags: [planning, quality]
 # providers omitted = available for all providers
 owner: developer-platform
-status: recommended
-channel: stable

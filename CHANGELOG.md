@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Redesigned the install/update picker.** The current row is bold and accent-colored
+  with a pointer, so it is obvious where the cursor sits during arrow navigation; arrow
+  keys wrap around; and rows are aligned into single lines that no longer wrap a trailing
+  tag onto its own line.
+
+### Removed
+
+- **Per-asset status and channel.** The `status` (experimental/recommended/deprecated/
+  blocked) and `channel` (internal/beta/stable) fields are gone — every catalog asset is
+  stable and installs the same way. This drops the `(experimental)` picker tag, the `list`
+  Status column, and the block/deprecate install gate. Group deprecation in `catalog.yaml`
+  is unaffected; leftover `status:`/`channel:` keys in manifests are ignored.
+
 ## 0.3.1 — 2026-07-24
 
 ### Added

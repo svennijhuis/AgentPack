@@ -6,8 +6,6 @@ groups: ['frontend']
 tags: ['ui', 'components']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/shadcn-ui/ui/tree/main/skills/shadcn'
   ref: '4baadbc6517070ae8f8feb2c97037adc2b305544'

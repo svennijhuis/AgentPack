@@ -74,8 +74,6 @@ public static class CatalogMapper
             Error(issues, "asset.version.invalid", $"{context}: version '{dto.Version}' is not valid semver (expected MAJOR.MINOR.PATCH).");
         }
 
-        var status = TryEnum(() => EnumParsers.ParseStatus(dto.Status, context), AssetStatus.Recommended, issues);
-        var channel = TryEnum(() => EnumParsers.ParseChannel(dto.Channel, context), Channel.Stable, issues);
         var providers = MapProviders(dto.Providers, context, issues);
         var source = MapSource(dto.Source, context, issues);
         var mcp = MapMcp(dto, context, issues);
@@ -94,8 +92,6 @@ public static class CatalogMapper
             Tags = dto.Tags,
             Providers = providers,
             Owner = string.IsNullOrWhiteSpace(dto.Owner) ? null : dto.Owner,
-            Status = status,
-            Channel = channel,
             Source = source!,
             Mcp = mcp,
             Hook = hook

@@ -6,8 +6,6 @@ groups: ['engineering', 'review']
 tags: ['review', 'quality']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/wshobson/agents/blob/main/plugins/comprehensive-review/agents/code-reviewer.md'
   ref: 'c4b82b0ad771190355eb8e204b1329732a18449a'

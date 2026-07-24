@@ -239,7 +239,6 @@ public class ProfileApplyCommand : Command<ProfileApplyCommand.Settings>
                 "Run 'agentpack profile list'.");
 
         var assets = Expand(loaded.Catalog, profile);
-        assets = CommandHelpers.EnforceStatus(assets, explicitIds: []);
         if (assets.Count == 0)
         {
             throw new AgentPackException($"Profile '{profile.Id}' selects no installable assets.");

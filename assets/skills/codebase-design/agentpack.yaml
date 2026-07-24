@@ -6,8 +6,6 @@ groups: ['engineering']
 tags: ['architecture', 'design']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/mattpocock/skills/tree/main/skills/engineering/codebase-design'
   ref: 'ed37663cc5fbef691ddfecd080dff42f7e7e350d'

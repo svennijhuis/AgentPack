@@ -618,18 +618,6 @@ public class CliEndToEndTests
     }
 
     [Fact]
-    public void BlockedAssetCannotBeInstalledExplicitly()
-    {
-        using var temp = new TempDir();
-        WriteCatalog(temp);
-        WriteSkill(temp, "banned", "status: blocked");
-
-        var result = RunCli(temp, "install", "banned", "--claude", "--project", "--yes");
-        Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("blocked", (result.Output + result.Error).ToLowerInvariant());
-    }
-
-    [Fact]
     public void InstallWithoutTerminalAndWithoutArgsGivesGuidance()
     {
         using var temp = new TempDir();
@@ -668,7 +656,7 @@ public class CliEndToEndTests
     }
 
     [Fact]
-    public void ListHidesStatusAndSourceColumnsWhenAllDefault()
+    public void ListHidesSourceColumnForLocalOnlyCatalog()
     {
         using var temp = new TempDir();
         WriteCatalog(temp);
@@ -677,15 +665,7 @@ public class CliEndToEndTests
         var plain = RunCli(temp, "list");
         Assert.Equal(0, plain.ExitCode);
         Assert.Contains("demo-skill", plain.Output);
-        Assert.DoesNotContain("Status", plain.Output);
         Assert.DoesNotContain("Source", plain.Output);
-
-        // A non-default status brings the column back.
-        WriteSkill(temp, "old-skill", "status: deprecated");
-        var withStatus = RunCli(temp, "list");
-        Assert.Equal(0, withStatus.ExitCode);
-        Assert.Contains("Status", withStatus.Output);
-        Assert.Contains("deprecated", withStatus.Output);
     }
 
     [Fact]

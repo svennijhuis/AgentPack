@@ -398,7 +398,7 @@ A few deliberate scoping notes:
 | [How AgentPack works](docs/how-it-works.md) | Resolution, install, drift detection, and lockfiles |
 | [Provider mapping](docs/provider-mapping.md) | Where each asset kind lands per provider |
 | [External assets](docs/external-assets.md) | Pinning, checksums, and licensing of upstream content |
-| [Governance](docs/governance.md) | Status lifecycle, ownership, and deprecation |
+| [Governance](docs/governance.md) | Review gates, sourcing policy, and ownership |
 | [Catalog repository setup](docs/catalog-repository-setup.md) | Running your own catalog repository |
 | [CLI design](docs/cli-design.md) | The command surface and the principles behind it |
 

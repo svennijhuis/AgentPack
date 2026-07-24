@@ -6,8 +6,6 @@ groups: ['security', 'engineering']
 tags: ['git', 'safety', 'policy']
 owner: 'developer-platform'
 providers: ['claude', 'codex']
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/mattpocock/skills/tree/main/skills/misc/git-guardrails-claude-code'
   ref: 'ed37663cc5fbef691ddfecd080dff42f7e7e350d'

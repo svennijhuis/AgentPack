@@ -55,9 +55,7 @@ public class InstallCommand : Command<InstallCommand.Settings>
                 "Pass asset ids ('agentpack install code-review'), a kind ('agentpack install skills'), or --group <name>.");
         }
 
-        var assets = CommandHelpers.EnforceStatus(
-            CommandHelpers.SelectAssets(loaded.Catalog, settings.Targets, settings.Groups, providers),
-            explicitIds);
+        var assets = CommandHelpers.SelectAssets(loaded.Catalog, settings.Targets, settings.Groups, providers);
         if (assets.Count == 0)
         {
             throw new AgentPackException("No matching assets found.", "Run 'agentpack list' to see the catalog.");

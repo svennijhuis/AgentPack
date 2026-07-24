@@ -6,8 +6,6 @@ groups: ['backend', 'engineering']
 tags: ['mcp', 'github', 'remote']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 mcp:
   server: 'github-remote'
   transport: http

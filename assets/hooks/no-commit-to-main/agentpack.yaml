@@ -6,8 +6,6 @@ groups: ['engineering', 'security']
 tags: ['git', 'safety', 'policy']
 owner: 'developer-platform'
 # providers omitted = available for all providers (Bash-content hook greps the raw payload)
-status: experimental
-channel: beta
 hook:
   trigger: preToolUse
   tool: 'Bash'

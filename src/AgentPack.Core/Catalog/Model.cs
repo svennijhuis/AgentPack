@@ -48,8 +48,6 @@ public sealed record Asset
     public required IReadOnlyList<ProviderName> Providers { get; init; }
 
     public string? Owner { get; init; }
-    public AssetStatus Status { get; init; } = AssetStatus.Recommended;
-    public Channel Channel { get; init; } = Channel.Stable;
     public required AssetSource Source { get; init; }
     public McpServer? Mcp { get; init; }
     public HookSpec? Hook { get; init; }

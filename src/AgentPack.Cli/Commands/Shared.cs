@@ -228,32 +228,6 @@ public static class CommandHelpers
         return result;
     }
 
-    /// <summary>Blocked assets never install; deprecated ones warn. Explicitly requested blocked assets are an error.</summary>
-    public static List<Asset> EnforceStatus(List<Asset> assets, IReadOnlyList<string> explicitIds)
-    {
-        var result = new List<Asset>();
-        foreach (var asset in assets)
-        {
-            switch (asset.Status)
-            {
-                case AssetStatus.Blocked when explicitIds.Contains(asset.Id, StringComparer.OrdinalIgnoreCase):
-                    throw new AgentPackException(
-                        $"Asset '{asset.Id}' is blocked by the catalog and cannot be installed.",
-                        "Ask the asset owner or your platform team why it is blocked.");
-                case AssetStatus.Blocked:
-                    Output.Info($"Skipping '{asset.Id}': status is blocked.");
-                    continue;
-                case AssetStatus.Deprecated:
-                    Output.Warning($"'{asset.Id}' is deprecated.");
-                    break;
-            }
-
-            result.Add(asset);
-        }
-
-        return result;
-    }
-
     /// <summary>Shared apply pipeline: render plan, confirm, resolve drift, apply, report.</summary>
     public static int RenderAndApply(
         CliSession session,

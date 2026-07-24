@@ -6,8 +6,6 @@ groups: ['engineering']
 tags: ['mcp', 'reasoning']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 mcp:
   server: 'sequential-thinking'
   transport: stdio

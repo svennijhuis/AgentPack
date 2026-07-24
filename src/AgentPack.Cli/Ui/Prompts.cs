@@ -12,6 +12,9 @@ public enum AssetInstallMarker
 
 public static class Prompts
 {
+    /// <summary>Current-row style for every picker: bold, warm terracotta ≈ the Claude CLI accent.</summary>
+    private static readonly Style Highlight = new(foreground: new Color(215, 135, 95), decoration: Decoration.Bold);
+
     /// <summary>
     /// Interactive asset picker. Used by 'install' (nothing preselected) and 'update'
     /// (everything preselected). Catalogs that fit on one page get a single grouped
@@ -57,6 +60,8 @@ public static class Prompts
             var prompt = new SelectionPrompt<KindChoice>()
                 .Title($"[bold]{Markup.Escape(title)}[/] [grey]({assets.Count} assets — pick a category, tick assets, repeat; type to search)[/]")
                 .PageSize(Math.Max(pageSize, kinds.Count + 4))
+                .HighlightStyle(Highlight)
+                .WrapAround()
                 .EnableSearch()
                 .UseConverter(choice => choice.Label);
             prompt.AddChoices(kinds
@@ -100,15 +105,18 @@ public static class Prompts
     {
         while (true)
         {
+            var nameWidth = Math.Clamp(assets.Max(x => x.Id.Length), 1, 28);
             var prompt = new SelectionPrompt<AssetChoice>()
                 .Title($"[bold]Find an asset[/] [grey](type to filter, enter toggles it, {cart.Count} selected)[/]")
                 .PageSize(pageSize)
+                .HighlightStyle(Highlight)
+                .WrapAround()
                 .EnableSearch()
                 .UseConverter(choice => choice.Label);
             prompt.AddChoices(assets
                 .OrderBy(x => x.Kind).ThenBy(x => x.Id, StringComparer.Ordinal)
                 .Select(asset => new AssetChoice(
-                    $"{(cart.ContainsKey(asset.Id) ? "[green]✓[/] " : "  ")}{Label(asset, installed)} [grey]· {asset.Kind.Display()}[/]",
+                    $"{(cart.ContainsKey(asset.Id) ? "[green]✓[/] " : "  ")}{Label(asset, nameWidth, installed, extraReserve: 5 + asset.Kind.Display().Length)} [grey]· {asset.Kind.Display()}[/]",
                     asset))
                 .Prepend(new AssetChoice("[grey]back to categories[/]", null)));
 
@@ -129,10 +137,13 @@ public static class Prompts
 
     private static IReadOnlyList<Asset> Checklist(IReadOnlyList<Asset> assets, string title, HashSet<string> preselectedIds, int pageSize, IReadOnlyDictionary<string, AssetInstallMarker>? installed)
     {
+        var nameWidth = Math.Clamp(assets.Max(x => x.Id.Length), 1, 28);
         var prompt = new MultiSelectionPrompt<AssetChoice>()
             .Title($"[bold]{Markup.Escape(title)}[/]")
             .PageSize(pageSize)
             .NotRequired()
+            .HighlightStyle(Highlight)
+            .WrapAround()
             .InstructionsText("[grey](space toggles, enter confirms, arrows move — a kind row toggles its whole group)[/]")
             .UseConverter(choice => choice.Label);
 
@@ -141,7 +152,7 @@ public static class Prompts
             var header = new AssetChoice($"[bold]{kindGroup.Key.Display()}[/]", null);
             var children = kindGroup
                 .OrderBy(x => x.Id, StringComparer.Ordinal)
-                .Select(asset => new AssetChoice(Label(asset, installed), asset))
+                .Select(asset => new AssetChoice(Label(asset, nameWidth, installed), asset))
                 .ToList();
             prompt.AddChoiceGroup(header, children);
             foreach (var child in children.Where(x => preselectedIds.Contains(x.Asset!.Id)))
@@ -200,6 +211,7 @@ public static class Prompts
         {
             var choice = AnsiConsole.Prompt(new SelectionPrompt<string>()
                 .Title($"Overwrite [bold]{Markup.Escape(item.Asset.Id)}[/] with catalog version {item.Asset.Version}?")
+                .HighlightStyle(Highlight)
                 .AddChoices("overwrite with catalog version", keepLabel, "show diff", "abort"));
 
             switch (choice)
@@ -280,25 +292,28 @@ public static class Prompts
         return result;
     }
 
-    private static string Label(Asset asset, IReadOnlyDictionary<string, AssetInstallMarker>? installed)
+    /// <summary>
+    /// One aligned, single-line row: name padded to <paramref name="nameWidth"/>, then version,
+    /// then a description truncated to whatever space is left. Every non-description field is
+    /// reserved up front so the row never wraps (which used to push trailing tags onto their
+    /// own line).
+    /// </summary>
+    private static string Label(Asset asset, int nameWidth, IReadOnlyDictionary<string, AssetInstallMarker>? installed, int extraReserve = 0)
     {
-        // Fit the description to the terminal: id + version + prompt chrome eat ~30 columns.
-        var room = Math.Clamp(AnsiConsole.Profile.Width - asset.Id.Length - 30, 24, 100);
+        var (marker, markerLen) = installed is not null && installed.TryGetValue(asset.Id, out var state)
+            ? state == AssetInstallMarker.UpdateAvailable
+                ? (" [blue](update available)[/]", " (update available)".Length)
+                : (" [green](installed)[/]", " (installed)".Length)
+            : ("", 0);
+
+        var version = asset.Version.ToString();
+        // Reserve the group indent + "[ ] " checkbox (8 cols) + name + gap + version + 2-space
+        // gap + marker + any caller-supplied suffix + a safety margin, so the row never wraps.
+        var chrome = 8 + nameWidth + 1 + version.Length + 2 + markerLen + extraReserve + 4;
+        var room = Math.Clamp(AnsiConsole.Profile.Width - chrome, 24, 100);
         var description = Output.Fit(asset.Description, room);
-        var badge = asset.Status switch
-        {
-            AssetStatus.Experimental => " [grey](experimental)[/]",
-            AssetStatus.Deprecated => " [yellow](deprecated)[/]",
-            _ => ""
-        };
-        var marker = installed is not null && installed.TryGetValue(asset.Id, out var state)
-            ? state switch
-            {
-                AssetInstallMarker.UpdateAvailable => " [blue](update available)[/]",
-                _ => " [green](installed)[/]"
-            }
-            : "";
-        return $"{Markup.Escape(asset.Id)} [grey]{asset.Version}[/]  {Markup.Escape(description)}{marker}{badge}";
+        var name = asset.Id.PadRight(nameWidth);
+        return $"{Markup.Escape(name)} [grey]{version}[/]  {Markup.Escape(description)}{marker}";
     }
 
     private sealed record AssetChoice(string Label, Asset? Asset);

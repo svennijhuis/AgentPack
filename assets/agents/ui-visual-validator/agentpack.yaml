@@ -6,8 +6,6 @@ groups: ['frontend', 'testing']
 tags: ['frontend', 'accessibility']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/wshobson/agents/blob/main/plugins/accessibility-compliance/agents/ui-visual-validator.md'
   ref: 'c4b82b0ad771190355eb8e204b1329732a18449a'

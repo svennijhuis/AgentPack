@@ -13,21 +13,6 @@ public enum AssetKind
     Agents
 }
 
-public enum AssetStatus
-{
-    Experimental,
-    Recommended,
-    Deprecated,
-    Blocked
-}
-
-public enum Channel
-{
-    Internal,
-    Beta,
-    Stable
-}
-
 public enum GroupStatus
 {
     Active,
@@ -87,12 +72,6 @@ public static class AssetKinds
 
 public static class EnumParsers
 {
-    public static AssetStatus ParseStatus(string? value, string context)
-        => ParseOrThrow<AssetStatus>(value, AssetStatus.Recommended, context, "status");
-
-    public static Channel ParseChannel(string? value, string context)
-        => ParseOrThrow<Channel>(value, Channel.Stable, context, "channel");
-
     public static GroupStatus ParseGroupStatus(string? value, string context)
         => ParseOrThrow<GroupStatus>(value, GroupStatus.Active, context, "status");
 

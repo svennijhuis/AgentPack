@@ -6,8 +6,6 @@ groups: [security, backend, infra]
 tags: [required, policy]
 # providers omitted = available for all providers (hooks install natively on all four)
 owner: security-platform
-status: recommended
-channel: stable
 hook:
   trigger: preToolUse
   tool: Bash

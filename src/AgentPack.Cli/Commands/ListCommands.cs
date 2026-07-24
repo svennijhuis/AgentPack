@@ -58,8 +58,8 @@ public sealed class ListCommand : Command<ListCommand.Settings>
     }
 
     /// <summary>
-    /// Compact by default — id, kind, version, and only the status/source columns that
-    /// actually carry a non-default value. Descriptions, groups, and providers hide behind
+    /// Compact by default — id, kind, version, and only the source column when it
+    /// carries a non-default value. Descriptions, groups, and providers hide behind
     /// <c>--wide</c> so the common view stays scannable and never wraps into a wall of text.
     /// </summary>
     internal static void RenderAssets(IReadOnlyList<Asset> assets, string emptyMessage, bool wide = false, bool showKindBreakdown = false)
@@ -67,11 +67,10 @@ public sealed class ListCommand : Command<ListCommand.Settings>
         var width = Spectre.Console.AnsiConsole.Profile.Width;
 
         // Only carry columns that say something. Kind is noise once every row shares it
-        // (a filtered `list <kind>`); status/source only appear when a value is non-default.
+        // (a filtered `list <kind>`); source only appears when a value is non-default.
         // Source is a detail: on a narrow terminal it costs a column that makes ids wrap,
         // so it waits for a wide terminal or --wide.
         var showKind = assets.Select(x => x.Kind).Distinct().Count() > 1;
-        var showStatus = assets.Any(x => x.Status != AssetStatus.Recommended);
         var showSource = assets.Any(x => x.Source is AssetSource.External) && (wide || width >= 100);
         var descriptionRoom = Math.Clamp(width - 55, 24, 120);
 
@@ -79,8 +78,6 @@ public sealed class ListCommand : Command<ListCommand.Settings>
         if (showKind) headers.Add("Kind");
         headers.Add("Version");
         if (wide) headers.AddRange(["Groups", "Providers"]);
-        var statusColumn = showStatus ? headers.Count : -1;
-        if (showStatus) headers.Add("Status");
         var sourceColumn = showSource ? headers.Count : -1;
         if (showSource) headers.Add("Source");
         if (wide) headers.Add("Description");
@@ -88,7 +85,6 @@ public sealed class ListCommand : Command<ListCommand.Settings>
         // Every column except the wrap-friendly Description stays on one line so a long
         // value truncates instead of exploding a row into many terminal lines.
         var noWrap = new List<int> { 0 };
-        if (showStatus) noWrap.Add(statusColumn);
         if (showSource) noWrap.Add(sourceColumn);
 
         Output.Table(
@@ -103,16 +99,6 @@ public sealed class ListCommand : Command<ListCommand.Settings>
                     row.Add(string.Join(",", asset.Groups));
                     row.Add(asset.Providers.Count == ProviderNames.All.Count ? "all" : string.Join(",", asset.Providers.Select(ProviderNames.Display)));
                 }
-                if (showStatus)
-                {
-                    row.Add(asset.Status switch
-                    {
-                        AssetStatus.Deprecated => "[yellow]deprecated[/]",
-                        AssetStatus.Blocked => "[red]blocked[/]",
-                        AssetStatus.Experimental => "[grey]experimental[/]",
-                        _ => "recommended"
-                    });
-                }
                 if (showSource)
                 {
                     row.Add(asset.Source is AssetSource.External external
@@ -123,7 +109,7 @@ public sealed class ListCommand : Command<ListCommand.Settings>
                 return row.ToArray();
             }),
             emptyMessage: emptyMessage,
-            markupColumns: showStatus ? [statusColumn] : null,
+            markupColumns: null,
             noWrapColumns: noWrap.ToArray());
 
         RenderFooter(assets, wide, showKindBreakdown);

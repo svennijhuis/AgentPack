@@ -6,8 +6,6 @@ groups: ['security']
 tags: ['safety', 'policy']
 owner: 'security-platform'
 providers: ['claude', 'codex']
-status: experimental
-channel: beta
 hook:
   trigger: preToolUse
   tool: 'Edit|Write'

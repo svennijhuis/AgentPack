@@ -6,8 +6,6 @@ groups: ['testing', 'frontend']
 tags: ['mcp', 'browser', 'testing']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 mcp:
   server: 'playwright'
   transport: stdio

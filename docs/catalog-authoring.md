@@ -93,8 +93,6 @@ Reviewers should confirm:
 - groups and provider restrictions are appropriate;
 - CI passes `catalog validate`, `catalog lock --check`, and `catalog verify-external`.
 
-The generated manifest defaults new contributions to `experimental` and `beta`. Reviewers may promote those lifecycle fields in the proposal before merging.
-
 ## Repository enforcement
 
 `submit` never targets `main`, but repository rules are the final enforcement boundary. Require pull requests, CODEOWNER approval, passing catalog checks, resolved conversations, and protection against force pushes. See [catalog repository setup](catalog-repository-setup.md).

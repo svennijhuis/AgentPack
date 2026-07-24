@@ -6,8 +6,6 @@ groups: ['security']
 tags: ['compliance']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/wshobson/commands/blob/main/tools/compliance-check.md'
   ref: '27d3e77b1a844223721f6c983ddf261ac4441b89'

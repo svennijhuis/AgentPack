@@ -19,16 +19,11 @@ The org catalog is the trusted source of truth. Everything below assumes the cat
 
 ## Asset lifecycle
 
-| Status | Meaning | Install behavior |
-|---|---|---|
-| `experimental` | new, opt-in | installs normally |
-| `recommended` | the default choice | installs normally |
-| `deprecated` | being retired | installs with a warning |
-| `blocked` | banned (security/compliance) | refuses; explicit request is an error |
+Assets do not carry a per-asset status — everything in the catalog is stable and installs the same way. Lifecycle is expressed through versions and group retirement:
 
 - Version bumps (semver) on every content change; consumers pick them up via `agentpack outdated` / `update`.
-- Group retirement: `status: deprecated` + `replacedBy` + `removeAfter` — enforced by validation.
-- Emergency kill switch: set `status: blocked` and merge; new installs stop and `update` warns existing users after their catalog refreshes.
+- Group retirement: `status: deprecated` + `replacedBy` + `removeAfter` on a group in `catalog.yaml` — enforced by validation.
+- To retire an asset, drop it from the catalog (or its group) in a PR; consumers stop seeing it after their catalog refreshes.
 
 ## Sourcing policy
 

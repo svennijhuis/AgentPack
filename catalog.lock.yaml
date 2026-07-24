@@ -110,7 +110,7 @@ entries:
 - id: fetch
   kind: mcp
   sourceType: local
-  checksum: sha256:c05eaa0e338902bab222dd3aac079e94000ccebe2ace7ce0cae6aa6ab7218d74
+  checksum: sha256:94842eb4dca3856f2892c2bb2ab763fde2c943d84f9dbda311f8cb7152a14ecb
 - id: find-skills
   kind: skills
   sourceType: external
@@ -140,7 +140,7 @@ entries:
 - id: github-remote
   kind: mcp
   sourceType: local
-  checksum: sha256:c7bf59257089164171b3138c06001c142ad2500adb7d951fafc6bd81084036cc
+  checksum: sha256:db178666c0c6fc0093587a9c7f2eb63ddbc0ccba52fdd24b0673434c5d97876e
 - id: go-backend
   kind: rules
   sourceType: external
@@ -178,7 +178,7 @@ entries:
 - id: memory
   kind: mcp
   sourceType: local
-  checksum: sha256:2a28e6ccd289a37a86c76c48feb193763945c02c0e7e3d13da72d3d56031620c
+  checksum: sha256:9d959e080d656d81cb709e1e29c270d277dccfcd682c16d85842f68b4b9e650e
 - id: nextjs-app-router
   kind: rules
   sourceType: external
@@ -192,7 +192,7 @@ entries:
 - id: playwright
   kind: mcp
   sourceType: local
-  checksum: sha256:c5433fba18e668ef7e6682a10ec8e380b2c58f17e84127703b7e00b00154000e
+  checksum: sha256:99caef95cc08b2adba2d07788022ef5a5c1392ba9dc883936745039b187e17eb
 - id: protect-secret-files
   kind: hooks
   sourceType: local
@@ -252,7 +252,7 @@ entries:
 - id: sequential-thinking
   kind: mcp
   sourceType: local
-  checksum: sha256:b89632b6a690a39f8a5c707fe2e75e0a6f52e778f2cbde76f5cc7decbf04694f
+  checksum: sha256:939c2d8ca3ea5c21699f86c4a1f4892cf152547ae73e0ac862ff8bfff7c2c35f
 - id: setup-pre-commit
   kind: skills
   sourceType: external

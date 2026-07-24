@@ -6,8 +6,6 @@ groups: ['backend', 'infra']
 tags: ['azure', 'cloud']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 source:
   url: 'https://github.com/microsoft/azure-skills/tree/main/skills/azure-compute'
   ref: '1b592c63641049ff33e4952c4021c63b4507f147'

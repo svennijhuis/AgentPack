@@ -35,8 +35,7 @@ public static class TestData
         AssetSource? source = null,
         IReadOnlyList<ProviderName>? providers = null,
         McpServer? mcp = null,
-        HookSpec? hook = null,
-        AssetStatus status = AssetStatus.Recommended)
+        HookSpec? hook = null)
     {
         return new Asset
         {
@@ -47,8 +46,7 @@ public static class TestData
             Providers = providers ?? ProviderNames.All,
             Source = source ?? new AssetSource.Local($"assets/{kind.Display()}/{id}/content", null),
             Mcp = mcp,
-            Hook = hook,
-            Status = status
+            Hook = hook
         };
     }
 

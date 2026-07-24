@@ -13,7 +13,7 @@
 - **Interactive picker (`install`/`update` with no args).** Small catalogs get a single grouped checklist (page size adapts to the terminal height). Larger catalogs get a category browser: a searchable menu of kinds with counts ("skills (12)"), plus "everything", "find one asset" (type-to-search across all assets; picking one toggles it in the cart), "Done", and "Cancel". Picking a kind opens the checklist for just that kind; selections go into a cart that survives switching kinds ("skills (3 of 12 selected)", "Done — 5 selected"). "Done" applies the cart. Update preselects every outdated entry in both modes.
 - **Plan output.** Rows that need no work (up to date, pinned) are hidden once there are more than five, replaced by one summary line; a "To do:" line summarizes the actionable rows of a large plan. Skipped provider/kind combinations that share a reason are grouped into one line.
 - **Apply output.** Per-row "already up to date"/"pinned" lines collapse into counts past the same threshold, and large runs end with a one-line summary ("Done: 3 installed, 1 updated").
-- **`list`/`status`.** `list` hides the Status and Source columns when every row would show the default, truncates descriptions to the terminal width, and prints a count-plus-filter hint footer for 10+ assets. `status` colors actionable states, summarizes updates in a footer, and explains the next step when nothing is installed yet.
+- **`list`/`status`.** `list` hides the Source column when every row would show the default, truncates descriptions to the terminal width, and prints a count-plus-filter hint footer for 10+ assets. `status` colors actionable states, summarizes updates in a footer, and explains the next step when nothing is installed yet.
 
 ## Command surface
 

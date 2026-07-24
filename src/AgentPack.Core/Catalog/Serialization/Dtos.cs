@@ -52,8 +52,6 @@ public class AssetDto
     public List<string> Tags { get; set; } = [];
     public List<string> Providers { get; set; } = [];
     public string? Owner { get; set; }
-    public string Status { get; set; } = "recommended";
-    public string Channel { get; set; } = "stable";
     public SourceDto? Source { get; set; }
     public McpDto? Mcp { get; set; }
     public HookDto? Hook { get; set; }

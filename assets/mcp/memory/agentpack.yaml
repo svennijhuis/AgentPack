@@ -6,8 +6,6 @@ groups: ['engineering']
 tags: ['mcp', 'memory']
 owner: 'developer-platform'
 # providers omitted = available for all providers
-status: experimental
-channel: beta
 mcp:
   server: 'memory'
   transport: stdio

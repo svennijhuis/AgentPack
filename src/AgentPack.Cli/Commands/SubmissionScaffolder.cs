@@ -26,8 +26,6 @@ public static class SubmissionScaffolder
         builder.AppendLine(providers.Count > 0 && providers.Count < ProviderNames.All.Count
             ? $"providers: {List(providers.Select(ProviderNames.Display))}"
             : "# providers omitted = available for all providers");
-        builder.AppendLine("status: experimental");
-        builder.AppendLine("channel: beta");
 
         if (externalSource is { } external)
         {

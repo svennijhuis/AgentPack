@@ -1,193 +1,263 @@
 # AgentPack
 
-**One friendly place for your AI skills, hooks, MCP servers, prompts, agents, and instructions.**
+The one-command installer for the AI coding catalog. Install skills, hooks, MCP servers, prompts, agents, instructions, and rules into **Claude Code**, **Codex**, **GitHub Copilot**, and **Cursor** — each in its native format, all from one reviewed catalog.
 
-I like collecting useful AI tools, but installing the same files in different formats—and remembering where each one came from—quickly becomes messy. AgentPack gives those assets one reviewed catalog and one simple install command. Use the public catalog, point AgentPack at your team's catalog, or submit something useful for everyone.
+```bash
+dotnet tool install -g AgentPack   # install the CLI once
+agentpack list                     # browse the built-in catalog
+agentpack install                  # pick assets from a list and install them
+```
 
-AgentPack is open source. Contributions are welcome, and external creators keep their attribution: catalog entries record the original repository, exact reviewed commit, and license information when available. Thank you to the people who publish the skills and tools that make this ecosystem useful.
+There is nothing to configure first. AgentPack ships a built-in, reviewed catalog, so `agentpack list` works immediately.
 
-AgentPack has three deliberately separate parts:
+## What AgentPack installs
 
-| Part | Purpose | How it updates |
-|---|---|---|
-| AgentPack NuGet package | Installs the `agentpack` CLI | Publish a new NuGet version |
-| Catalog Git repository | Stores approved assets and review history | Merge a catalog pull request |
-| User or project files | Copies selected assets into each AI tool's native format | Run `agentpack install` or `agentpack update` |
+The catalog holds seven kinds of asset. AgentPack translates each into the native format of every provider that supports it.
 
-A catalog change does **not** require a NuGet release. NuGet ships the application; Git ships the catalog.
+| Kind | What it is |
+|---|---|
+| **Skills** | Reusable instruction sets an agent loads on demand — a `SKILL.md` folder |
+| **Hooks** | Scripts that run on agent events (before/after a tool, on session start) |
+| **MCP servers** | Model Context Protocol servers that give an agent new tools and data |
+| **Prompts** | Saved prompt templates and slash commands |
+| **Agents** | Specialized sub-agent definitions |
+| **Instructions** | The top-level project instructions file (`CLAUDE.md` / `AGENTS.md`) |
+| **Rules** | Path-scoped coding rules (Cursor `.mdc`, Claude rules) |
+
+## Commands
+
+Every command, in one place.
+
+| Command | What it does |
+|---|---|
+| [`agentpack list [kind]`](#agentpack-list) | Browse the catalog, optionally filtered by kind |
+| [`agentpack search <query>`](#agentpack-search) | Search the catalog by id, name, description, kind, or group |
+| [`agentpack install [ids]`](#agentpack-install) | Install assets — pass ids, a kind, or nothing to pick from a list |
+| [`agentpack update [ids]`](#agentpack-update) | Update installed assets to the catalog version |
+| [`agentpack outdated`](#agentpack-outdated) | Show installed assets with a newer catalog version |
+| [`agentpack status`](#agentpack-status) | Show what is installed and its state |
+| [`agentpack remove <ids>`](#agentpack-remove) | Remove installed assets |
+| [`agentpack diff <id>`](#agentpack-diff) | Check an installed asset for local modifications |
+| [`agentpack pin <id>` / `unpin <id>`](#agentpack-pin--agentpack-unpin) | Freeze or unfreeze an asset against updates |
+| [`agentpack submit <kind> <src>`](#agentpack-submit) | Propose an asset to the catalog through a pull request |
+| [`agentpack groups`](#agentpack-groups) | List catalog groups |
+| [`agentpack profile <cmd>`](#agentpack-profile) | List, plan, and apply team profiles |
+| [`agentpack catalog <cmd>`](#agentpack-catalog) | Select, inspect, sync, and validate the catalog |
+| [`agentpack config`](#agentpack-config) | Show agentpack's paths and set where its state lives |
+| [`agentpack doctor`](#agentpack-doctor) | Show environment, detected providers, and configuration |
+
+> [!NOTE]
+> Run `agentpack help <command>` for the full options of any command, or `agentpack --help` for the complete surface.
 
 ## Install an asset
 
 ```bash
-dotnet tool install -g AgentPack
-agentpack list
-agentpack install grill-me --user
+agentpack install code-review          # scope and providers are detected
+agentpack install code-review --user   # available to you across projects
+agentpack install code-review --project
 ```
 
-AgentPack has a built-in official catalog, so a normal user does not configure a source first. `agentpack list` shows everything it currently ships; `agentpack search <query>` narrows it down. To install the same asset into the current repository instead:
+The asset always comes from the approved catalog. Scope only controls its destination.
 
-```bash
-agentpack install grill-me --project
-```
-
-The asset always comes from the approved catalog. The scope only controls its destination:
+### Scope
 
 | Scope | Meaning |
 |---|---|
-| `--user` | Available to you across projects |
-| `--project` | Installed into the current repository for the team |
+| `--user` | Installed in your home directory, available across every project |
+| `--project` | Installed in the current repository, ready to commit for the team |
 
-User installations are local to the current device. Run the same command on another computer to install there; both devices use the same catalog as their source of truth. Project installations live in the repository and can be committed for the team when the target provider expects project files.
+If you pass neither, AgentPack uses `--project` inside a Git repository and `--user` everywhere else.
 
-If neither flag is supplied, AgentPack uses project scope inside a Git repository and user scope elsewhere.
+### Providers
 
-Providers are detected from the directory the install writes to: your home directory for `--user`, the repository for `--project`. Provider flags such as `--codex`, `--claude`, `--copilot`, and `--cursor` override that detection, and are required only when AgentPack finds no provider in either place.
-
-Preview an installation without writing files:
-
-```bash
-agentpack install grill-me --codex --user --dry-run
-```
-
-## Submit an asset to the catalog
-
-`submit` means “propose this asset for review.” It never pushes directly to `main`.
-
-Submit a local skill:
-
-```bash
-agentpack submit skill ./my-skill
-```
-
-A skill is normally a folder. AgentPack requires `SKILL.md` at its top level and includes its supporting folders such as `scripts/`, `references/`, and `assets/`.
-
-Hooks can be one script or a folder:
-
-```bash
-# One file: the command is inferred
-agentpack submit hook ./check-secrets.sh --trigger preToolUse --tool Bash
-
-# A folder: inferred when it contains one clear script, otherwise say which file starts it
-agentpack submit hook ./secret-check --command scripts/check.sh
-```
-
-MCP servers are submitted as typed configuration, not as an arbitrary folder. Secrets are never arguments or catalog values; only their environment-variable names are recorded:
-
-```bash
-# Local process (stdio)
-agentpack submit mcp github \
-  --command github-mcp-server \
-  --arg stdio \
-  --env GITHUB_TOKEN
-
-# Remote server
-agentpack submit mcp company-docs \
-  --url https://mcp.example.com \
-  --header-env Authorization=COMPANY_MCP_TOKEN
-```
-
-The input rules match how each kind is actually installed:
-
-| Kind | Submit input |
+| Flag | Target |
 |---|---|
-| Skill | Folder with top-level `SKILL.md`; supporting files and folders are included |
-| Hook | One script, or a folder plus one reviewed entry command |
-| Instruction, rule, prompt, agent | One file, because providers install these as one native file |
-| MCP server | ID plus typed `--command` or `--url` settings; no arbitrary folder |
-| Tool, template | Not accepted yet; no supported provider-native destination exists |
+| `--claude` | Claude Code |
+| `--codex` | Codex |
+| `--copilot` | GitHub Copilot |
+| `--cursor` | Cursor |
+| `-p, --provider <name>` | Any of the above by name (repeatable or comma-separated) |
 
-Submit an external skill:
+Providers are detected from the directory the install writes to — your home directory for `--user`, the repository for `--project`. The flags above override that detection and are only required when no provider is found in either place.
+
+### Options
+
+| Option | Effect |
+|---|---|
+| `--dry-run` | Show the install plan without changing any files |
+| `-g, --group <name>` | Install everything in a group (repeatable or comma-separated) |
+| `-y, --yes` | Skip confirmation prompts (for scripts and CI) |
+| `--force` | Overwrite locally modified installs without asking |
+| `--keep-local` | Keep locally modified installs without asking |
+
+### Examples
 
 ```bash
-agentpack submit skill \
-  https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-great-skills
+# Preview an install without writing files
+agentpack install code-review --codex --user --dry-run
+
+# Install every skill for Claude into the current repo, no prompts
+agentpack install skills --claude --project --yes
+
+# Install a whole group across detected providers
+agentpack install --group backend --user
 ```
 
-The short form is intentional: AgentPack derives the ID from the URL and pins the latest commit currently on that branch. Override only when needed:
+## Pick assets from a list
+
+Run `install` (or `update`) with no ids to open an interactive picker: tick the assets you want and press Enter. It installs anything new and updates anything already installed when the catalog has a newer version.
 
 ```bash
-agentpack submit skill <url> --id writing-great-skills
-agentpack submit skill <url> --ref <full-commit-sha>
-agentpack submit skill <url> --version 1.2.0
+agentpack install          # pick from everything
+agentpack install skills   # pick from one kind
 ```
 
-AgentPack then:
+Rows already installed are marked, and a newer catalog version shows as `(update available)`, so you always see whether Enter will install or update.
 
-1. previews the exact local files or external source that will be proposed;
-2. asks for confirmation before publishing;
-3. clones the active catalog;
-4. creates an `agentpack/submit/...` branch;
-5. resolves an external source to a full commit SHA;
-6. adds the asset manifest or reviewed local content;
-7. records the asset's checksum in `catalog.lock.yaml`, leaving every other entry untouched;
-8. validates the complete catalog;
-9. commits and pushes only the proposal branch—to the catalog for maintainers, or automatically to the contributor's fork when they have read-only access;
-10. opens a pull request with the GitHub CLI.
+> [!NOTE]
+> The picker only appears in an interactive terminal. In CI, name the ids or a kind and pass `--yes`.
 
-### Keep an asset up to date
+## Command reference
 
-Iterating on an asset you already contributed uses the same command with `--update`:
+### `agentpack list`
+
+Browse the catalog. Compact by default — id, version, and only the columns that carry a non-default value.
 
 ```bash
-agentpack submit skill ./my-skill --update
+agentpack list                 # everything, grouped by kind in the footer
+agentpack list skills          # one kind
+agentpack list hooks --wide    # add descriptions, groups, and providers
+agentpack list --group backend --provider claude
 ```
 
-That opens a pull request replacing the asset's folder with your current one and bumps the patch version so existing installs pick it up on `agentpack update`. Pass `--version` to choose a minor or major bump instead; the version must always be higher than the one in the catalog. Submitting an asset that already exists without `--update` fails before anything is cloned, and so does `--update` for an asset that is not in the catalog yet.
+| Option | Effect |
+|---|---|
+| `[kind]` | Filter by kind: `skills`, `hooks`, `mcp`, `instructions`, `rules`, `prompts`, `agents`, or `all` |
+| `-g, --group <name>` | Filter by group |
+| `-p, --provider <name>` | Filter by provider |
+| `-w, --wide` | Show extra columns: description, groups, and providers |
 
-For local folders, AgentPack ignores common repository/build clutter (`.git`, `node_modules`, `bin`, `obj`, caches), rejects symlinks and secret-like files, and limits the number and total size of files. The preview is the authoritative list: if a file is not shown there, it is not copied into the proposal. In scripts or CI, `--yes` accepts that preview; `--prepare-only` never publishes it.
+### `agentpack search`
 
-Automatic PR creation requires [`gh`](https://cli.github.com/) and `gh auth login`. AgentPack checks for both before asking you to confirm, so an unauthenticated run stops before anything is cloned. Add `--draft` to open the pull request as a draft. To prepare and inspect the branch without pushing or needing `gh` at all:
+Search approved asset metadata.
 
 ```bash
-agentpack submit skill ./my-skill --prepare-only
+agentpack search review
+agentpack search typescript --kind skills
 ```
 
-The asset becomes available only after its PR is approved and merged. Contributors do not need write access to the catalog: AgentPack creates or reuses their GitHub fork. Catalog branch protection and CODEOWNERS provide the approval boundary; catalog authors and maintainers use the same submission command and never push directly to `main`.
+Accepts the same `--kind`, `--group`, `--provider`, and `--wide` filters as `list`.
 
-## Catalog updates
+### `agentpack install`
 
-- `agentpack install` and `agentpack update` refresh a remote catalog before changing files.
-- Read-only browsing uses the cache and refreshes it when it is older than 24 hours.
-- If refresh fails while offline, AgentPack uses a cached catalog and prints a warning.
-- `agentpack catalog sync` forces an immediate refresh.
-- `agentpack catalog status` shows the repository, branch, revision, cache, and last refresh.
+Install catalog assets into your user profile or the current project. See [Install an asset](#install-an-asset) and [Pick assets from a list](#pick-assets-from-a-list) above.
 
-Example:
+### `agentpack update`
+
+Update installed assets to the catalog versions. With no ids in a terminal, it opens the picker with updatable assets pre-selected.
 
 ```bash
-agentpack catalog status
-agentpack catalog sync
+agentpack update            # update everything (pick in a terminal)
 agentpack update --user
+agentpack update code-review
 ```
 
-Publish a new NuGet version only when CLI behavior changes—for example commands, provider adapters, validation, catalog schema, or supported asset kinds. Catalog content changes are published by merging their PR. `minimumAgentPackVersion` prevents a catalog that needs a newer CLI from being used by an older installation.
+### `agentpack outdated`
 
-## Use another approved catalog
-
-The official catalog works without setup. An organization can select its own catalog once:
+Show installed assets that have a newer version in the catalog, without changing anything.
 
 ```bash
-agentpack catalog use https://github.com/your-org/ai-catalog.git --name company
+agentpack outdated --project
 ```
 
-The command validates the repository by syncing it immediately. Organization-managed machines can instead set `AGENTPACK_CATALOG_URL` and optional `AGENTPACK_CATALOG_BRANCH`.
+### `agentpack status`
 
-One active catalog keeps the trust model understandable. The catalog is always the source; `--user` and `--project` only choose where an approved asset is installed.
+Show installed assets and whether each is up to date, has an update available, or was removed from the catalog.
 
-## Everyday commands
+```bash
+agentpack status --project
+```
 
-| Goal | Command |
-|---|---|
-| Search the catalog | `agentpack search <query>` |
-| Browse the catalog | `agentpack list` |
-| Install an asset | `agentpack install <id> [--user\|--project]` |
-| Preview installation | `agentpack install <id> --dry-run` |
-| Submit an asset for review | `agentpack submit <kind> <path-or-url-or-id>` |
-| Show installed assets | `agentpack status` |
-| Update installed assets | `agentpack update` |
-| Remove an installed asset | `agentpack remove <id>` |
-| Inspect the active catalog | `agentpack catalog status` |
-| Refresh the catalog now | `agentpack catalog sync` |
+### `agentpack remove`
+
+Remove installed assets, including the entries AgentPack merged into shared provider configs. Backups land under `.agentpack/backups/` (`~/.agentpack/backups` for `--user`).
+
+```bash
+agentpack remove code-review --project
+agentpack remove skills --user          # remove by kind
+```
+
+### `agentpack diff`
+
+Compare an installed asset against its lockfile checksum to see whether it was modified locally.
+
+```bash
+agentpack diff code-review --project
+```
+
+### `agentpack pin` / `agentpack unpin`
+
+Pin an installed asset so `update` skips it; unpin to allow updates again.
+
+```bash
+agentpack pin code-review --project
+agentpack unpin code-review --project
+```
+
+### `agentpack submit`
+
+Propose an asset to the catalog through a pull request. See [Submit an asset](#submit-an-asset) for the full workflow.
+
+### `agentpack groups`
+
+List catalog groups and their status.
+
+```bash
+agentpack groups
+```
+
+### `agentpack profile`
+
+Team profiles bundle a set of assets so a whole team installs the same thing in one command.
+
+```bash
+agentpack profile list
+agentpack profile plan backend     # dry-run
+agentpack profile apply backend
+```
+
+### `agentpack catalog`
+
+Select, inspect, and maintain the catalog.
+
+```bash
+agentpack catalog status                              # active catalog, revision, cache, last refresh
+agentpack catalog sync                                # refresh now
+agentpack catalog use <git-url> --name company        # select an organization catalog
+agentpack catalog validate                            # CI: manifests, references, checksums
+agentpack catalog lock                                # CI: write catalog.lock.yaml
+agentpack catalog verify-external                     # CI: re-fetch and checksum external assets
+```
+
+### `agentpack config`
+
+Show every path AgentPack uses and choose where its state lives.
+
+```bash
+agentpack config                                  # show all paths and where each comes from
+agentpack config --set-home ~/dotfiles/agentpack  # relocate agentpack's state directory
+agentpack config --reset-home                     # revert to the default (~/.agentpack)
+```
+
+The **home** holds AgentPack's own state — catalog cache, lockfiles, and `config.json`. It does **not** move where `--user` installs go: provider files (`.claude/`, `.codex/`, …) always live in your OS user profile. See [Configuration and paths](#configuration-and-paths).
+
+### `agentpack doctor`
+
+Show the AgentPack version, home, working directory, detected providers, the active catalog, and the default scope. Start here when something is not detected as expected.
+
+```bash
+agentpack doctor
+```
 
 ## Supported assets and providers
 
@@ -201,11 +271,81 @@ One active catalog keeps the trust model understandable. The catalog is always t
 | Agents | ✓ | ✓ | ✓ | ✓ |
 | Rules | ✓ | — | — | ✓ |
 
-“—” means the provider has no corresponding feature. AgentPack reports the skip instead of inventing a format. See [provider mapping](docs/provider-mapping.md) for paths and translations.
+“—” means the provider has no matching feature; AgentPack reports the skip instead of inventing a format. See [provider mapping](docs/provider-mapping.md) for exact paths and translations.
+
+## Submit an asset
+
+`submit` proposes an asset for review. It never pushes directly to `main`.
+
+```bash
+# A local skill folder (needs a top-level SKILL.md)
+agentpack submit skill ./my-skill
+
+# A hook — one script, or a folder plus its entry command
+agentpack submit hook ./check-secrets.sh --trigger preToolUse --tool Bash
+agentpack submit hook ./secret-check --command scripts/check.sh
+
+# An MCP server as typed config — only env-var names are recorded, never secrets
+agentpack submit mcp github --command github-mcp-server --arg stdio --env GITHUB_TOKEN
+agentpack submit mcp company-docs --url https://mcp.example.com --header-env Authorization=COMPANY_MCP_TOKEN
+
+# An external asset by URL — the id and pinned commit are derived for you
+agentpack submit skill https://github.com/vercel-labs/skills/tree/main/skills/some-skill
+```
+
+| Kind | Submit input |
+|---|---|
+| Skill | Folder with top-level `SKILL.md`; supporting files and folders are included |
+| Hook | One script, or a folder plus one reviewed entry command |
+| Instruction, rule, prompt, agent | One file — providers install these as a single native file |
+| MCP server | Id plus typed `--command` or `--url`; no arbitrary folder |
+| Tool, template | Not accepted yet; no provider-native destination exists |
+
+Iterate on an asset you already contributed with `--update`, which bumps the patch version so existing installs pick it up on `agentpack update`:
+
+```bash
+agentpack submit skill ./my-skill --update
+```
+
+AgentPack previews every file that will be proposed, asks for confirmation, then clones the catalog, creates an `agentpack/submit/...` branch, pins external sources to a full commit SHA, records checksums in `catalog.lock.yaml`, validates the catalog, and opens a pull request with the [GitHub CLI](https://cli.github.com/). The asset becomes available only after its PR is approved and merged.
+
+> [!NOTE]
+> Automatic PRs need `gh` and `gh auth login`. To build the branch without pushing or needing `gh`, use `--prepare-only`. In CI, `--yes` accepts the file preview.
+
+## Use another catalog
+
+The official catalog works without setup. An organization can select its own once:
+
+```bash
+agentpack catalog use https://github.com/your-org/ai-catalog.git --name company
+```
+
+The command validates the repository by syncing it immediately. Managed machines can instead set `AGENTPACK_CATALOG_URL` (and optional `AGENTPACK_CATALOG_BRANCH`). One active catalog keeps the trust model simple: the catalog is always the source; `--user` and `--project` only choose where an approved asset lands.
+
+## Configuration and paths
+
+`agentpack config` shows every path and where it resolves from. There are two roots, and they are deliberately separate:
+
+| Root | Holds | Change it with |
+|---|---|---|
+| **home** | AgentPack's own state: catalog cache, lockfiles, `config.json` | `agentpack config --set-home <path>` or `AGENTPACK_HOME` |
+| **provider home** | Where `--user` installs land (`.claude/`, `.codex/`, …) | Always your OS user profile — not relocated by AgentPack |
+
+Precedence for the home directory is: `AGENTPACK_HOME` (per-invocation override) → a persisted `config --set-home` choice → the default `~/.agentpack`. Relocating the home does not move existing state automatically; copy the old directory's contents over to carry your installs and cache across.
+
+### Environment variables
+
+| Variable | Effect |
+|---|---|
+| `AGENTPACK_HOME` | Overrides the home directory for a single invocation |
+| `AGENTPACK_CATALOG_URL` | Selects an organization catalog without `catalog use` |
+| `AGENTPACK_CATALOG_BRANCH` | Branch for `AGENTPACK_CATALOG_URL` (default `main`) |
+| `AGENTPACK_DEBUG=1` | Print a stack trace on unexpected errors |
+| `NO_COLOR` / `CI` | Disable color and interactive prompts |
 
 ## Included assets and attribution
 
-The official catalog is seeded with assets curated from permissively licensed upstream projects. External entries are pinned to a reviewed commit and checksummed; the repository and ref are the attribution, shown again at install time.
+The official catalog is seeded from permissively licensed upstream projects. External entries are pinned to a reviewed commit and checksummed; the repository and ref are the attribution, shown again at install time.
 
 | Upstream | License | Kinds it supplies |
 |---|---|---|
@@ -222,19 +362,31 @@ The official catalog is seeded with assets curated from permissively licensed up
 
 A few deliberate scoping notes:
 
-- **Rules from awesome-cursorrules install on Cursor only.** Their `.mdc` frontmatter (`globs: **/*`, unquoted) is not strict YAML, so Claude's `.mdc` → rule conversion cannot parse it. Cursor copies the file verbatim, so that is where they are offered.
-- **Only one `instructions` asset applies per provider.** Instructions target the whole `CLAUDE.md` / `AGENTS.md` file, so installing a second replaces the first.
-- **Some hooks are provider-scoped** to match the tool payload their script actually parses (for example `tool-guardian` reads the Copilot payload; `git-guardrails` reads the Claude payload). Installing a hook only where it can work is preferred over a silent no-op.
+- **Rules from awesome-cursorrules install on Cursor only.** Their `.mdc` frontmatter is not strict YAML, so Claude's `.mdc` → rule conversion cannot parse it; Cursor copies the file verbatim.
+- **Only one `instructions` asset applies per provider.** Instructions target the whole `CLAUDE.md` / `AGENTS.md` file, so a second replaces the first.
+- **Some hooks are provider-scoped** to the tool payload their script parses, so a hook installs only where it can actually work.
 
 ## Safety and review
 
 - External assets are pinned to reviewed commit SHAs and checksummed.
-- Hooks and MCP definitions go through the same catalog PR gate as every other asset.
+- Hooks and MCP definitions pass through the same catalog PR gate as every other asset.
 - Local modifications are detected before updates and backed up under `.agentpack/backups/`.
 - Shared provider configuration is merged; unrelated entries are preserved.
-- Catalog assets marked `blocked` cannot be installed.
+- Assets marked `blocked` cannot be installed.
 - Secret values never enter the catalog; MCP manifests declare environment-variable names only.
-- Local submissions preview every included file, exclude common generated folders, and reject symlinks, private keys, credential files, and oversized folders before cloning the catalog.
+- Local submissions preview every included file, exclude generated folders, and reject symlinks, private keys, credential files, and oversized folders before cloning the catalog.
+
+## Troubleshooting
+
+**"No provider configuration detected"** — name a provider with `--claude`, `--codex`, `--copilot`, or `--cursor`, and run `agentpack doctor` to see what is detected.
+
+**"This catalog requires AgentPack &lt;version&gt; or newer"** — a catalog can set `minimumAgentPackVersion`; update the CLI with `dotnet tool update -g AgentPack`.
+
+**`agentpack submit` stops before cloning** — it needs the [GitHub CLI](https://cli.github.com/): install `gh`, run `gh auth login`, then retry, or use `--prepare-only`.
+
+**Catalog looks stale, or you are offline** — read-only commands use a cache and refresh it after 24 hours. Force it with `agentpack catalog sync`; offline, AgentPack falls back to the cache and warns instead of failing.
+
+**Where did my files go?** — run `agentpack config` to see the home and provider home, and `agentpack status` to list installs.
 
 ## Documentation
 
@@ -250,17 +402,15 @@ A few deliberate scoping notes:
 | [Catalog repository setup](docs/catalog-repository-setup.md) | Running your own catalog repository |
 | [CLI design](docs/cli-design.md) | The command surface and the principles behind it |
 
-## Advanced catalog maintenance
+## How AgentPack is versioned
 
-Catalog maintainers and CI can use the lower-level commands directly:
+AgentPack has three deliberately separate parts, so a catalog change does not require a CLI release:
 
-```bash
-agentpack catalog validate
-agentpack catalog lock
-agentpack catalog verify-external
-```
-
-Normal contributors never edit manifests or lockfiles manually; `agentpack submit` prepares those files on the proposal branch. The maintenance commands above exist for catalog CI and incident recovery.
+| Part | Purpose | How it updates |
+|---|---|---|
+| AgentPack NuGet package | Installs the `agentpack` CLI | Publish a new NuGet version |
+| Catalog Git repository | Stores approved assets and review history | Merge a catalog pull request |
+| User or project files | Copies selected assets into each tool's native format | `agentpack install` / `agentpack update` |
 
 ## Install and update the CLI
 
@@ -278,20 +428,10 @@ The global tool requires the .NET SDK. Self-contained binaries that need no .NET
 dotnet build
 dotnet test
 dotnet format --verify-no-changes
-```
 
-Run the local CLI without installing it:
-
-```bash
+# Run the local CLI without installing it
 dotnet run --project src/AgentPack.Cli -- --help
-dotnet run --project src/AgentPack.Cli -- catalog status
-```
-
-Build and install a local NuGet package:
-
-```bash
-dotnet pack src/AgentPack.Cli -c Release -o ./artifacts/packages -p:Version=0.0.1-dev.1
-dotnet tool install -g AgentPack --add-source ./artifacts/packages --version 0.0.1-dev.1
+dotnet run --project src/AgentPack.Cli -- list
 ```
 
 Exit codes: `0` success · `1` user error · `2` validation failure · `3` drift/conflict · `70` internal error.

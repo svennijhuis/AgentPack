@@ -55,11 +55,11 @@ app.Configure(config =>
     config.AddCommand<InstallCommand>("install")
         .WithDescription("Install catalog assets into your user profile or current project.")
         .WithExample("install")
-        .WithExample("install", "grill-me", "--codex", "--user");
+        .WithExample("install", "code-review", "--codex", "--user");
 
     config.AddCommand<RemoveCommand>("remove")
         .WithDescription("Remove installed assets, including their entries in shared provider configs.")
-        .WithExample("remove", "grill-me", "--project");
+        .WithExample("remove", "code-review", "--project");
 
     config.AddCommand<UpdateCommand>("update")
         .WithDescription("Update installed assets to the catalog versions.")
@@ -75,19 +75,24 @@ app.Configure(config =>
 
     config.AddCommand<DiffCommand>("diff")
         .WithDescription("Compare an installed asset against its lockfile checksum.")
-        .WithExample("diff", "grill-me", "--project");
+        .WithExample("diff", "code-review", "--project");
 
     config.AddCommand<PinCommand>("pin")
         .WithDescription("Pin an installed asset so updates skip it.")
-        .WithExample("pin", "grill-me", "--project");
+        .WithExample("pin", "code-review", "--project");
 
     config.AddCommand<UnpinCommand>("unpin")
         .WithDescription("Unpin an installed asset.")
-        .WithExample("unpin", "grill-me", "--project");
+        .WithExample("unpin", "code-review", "--project");
 
     config.AddCommand<DoctorCommand>("doctor")
         .WithDescription("Show environment, detected providers, catalog, and configuration.")
         .WithExample("doctor");
+
+    config.AddCommand<ConfigCommand>("config")
+        .WithDescription("Show agentpack's paths and set where its state (home) lives.")
+        .WithExample("config")
+        .WithExample("config", "--set-home", "~/dotfiles/agentpack");
 
     config.AddBranch("catalog", catalog =>
     {

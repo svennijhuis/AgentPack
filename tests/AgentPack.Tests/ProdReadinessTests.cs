@@ -385,6 +385,47 @@ public class ProviderHomeTests
     }
 }
 
+public class HomePersistenceTests
+{
+    [Fact]
+    public void HomeResolvesEnvironmentThenPersistedThenDefault()
+    {
+        using var temp = new TempDir();
+        var previousEnv = Environment.GetEnvironmentVariable("AGENTPACK_HOME");
+        var previousOverride = AgentPackPaths.DefaultHomeBaseOverride;
+        try
+        {
+            Environment.SetEnvironmentVariable("AGENTPACK_HOME", null);
+            AgentPackPaths.DefaultHomeBaseOverride = temp.Path;
+            AgentPackPaths.ClearPersistedHome();
+
+            // Nothing persisted: the platform default under the overridden base.
+            Assert.Equal(Path.Combine(temp.Path, ".agentpack"), new AgentPackPaths(workingDirectory: temp.Path).Home);
+
+            // A persisted choice is honored...
+            var custom = Path.Combine(temp.Path, "relocated");
+            AgentPackPaths.PersistHome(custom);
+            Assert.Equal(custom, new AgentPackPaths(workingDirectory: temp.Path).Home);
+
+            // ...but AGENTPACK_HOME still wins over it.
+            var envHome = Path.Combine(temp.Path, "env-home");
+            Environment.SetEnvironmentVariable("AGENTPACK_HOME", envHome);
+            Assert.True(AgentPackPaths.HomeSetByEnvironment);
+            Assert.Equal(envHome, new AgentPackPaths(workingDirectory: temp.Path).Home);
+
+            // Clearing reverts to the default.
+            Environment.SetEnvironmentVariable("AGENTPACK_HOME", null);
+            AgentPackPaths.ClearPersistedHome();
+            Assert.Equal(Path.Combine(temp.Path, ".agentpack"), new AgentPackPaths(workingDirectory: temp.Path).Home);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGENTPACK_HOME", previousEnv);
+            AgentPackPaths.DefaultHomeBaseOverride = previousOverride;
+        }
+    }
+}
+
 public class UserConfigParsingTests
 {
     [Fact]

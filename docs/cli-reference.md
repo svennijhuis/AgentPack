@@ -39,11 +39,12 @@ Filter with `-k|--kind`, `-g|--group`, and `-p|--provider`.
 
 ### `agentpack list [kind] [options]`
 
-Browse approved catalog assets. Filter with `--group` or `--provider`.
+Browse approved catalog assets. Compact by default; filter with `--group` or `--provider`, and add `-w|--wide` for descriptions, groups, and providers.
 
 ```bash
 agentpack list
 agentpack list skills --group review
+agentpack list hooks --wide
 ```
 
 ### `agentpack groups`
@@ -57,18 +58,19 @@ List the catalog's discovery groups and lifecycle status.
 Install approved assets. With no target in an interactive terminal, opens a picker.
 
 ```bash
-agentpack install grill-me --user
+agentpack install                            # pick from a list, install or update
+agentpack install code-review --user
 agentpack install secret-scan --project
 agentpack install skills --codex --project
 agentpack install --group security --project
 ```
 
-Pass IDs, a kind, or `-g|--group <name>` to install everything in a group.
+Pass IDs, a kind, or `-g|--group <name>` to install everything in a group. With no target in an interactive terminal, a picker opens: ticked assets that are new are installed and ones already present are updated when the catalog has a newer version.
 
 Add `--dry-run` to show the catalog, scope, providers, actions, and exact destinations without writing files:
 
 ```bash
-agentpack install grill-me --codex --user --dry-run
+agentpack install code-review --codex --user --dry-run
 ```
 
 Remote catalogs refresh before an install. If the network is unavailable and a cache exists, AgentPack warns and uses that cache.
@@ -197,6 +199,18 @@ agentpack profile apply backend --project --yes
 Profiles select a reviewed set of catalog assets and providers.
 
 ## Diagnostics
+
+### `agentpack config [options]`
+
+Show every path AgentPack uses — home, config file, catalog cache, user lockfile, and provider home — and where each is resolved from. Also sets where AgentPack keeps its own state.
+
+```bash
+agentpack config                                  # show all paths and their source
+agentpack config --set-home ~/dotfiles/agentpack  # persist a new home directory
+agentpack config --reset-home                     # revert to the default (~/.agentpack)
+```
+
+The **home** holds AgentPack's own state (catalog cache, lockfiles, `config.json`). It never relocates provider files: `--user` installs always go to the OS user profile shown as the **provider home**. Home precedence is `AGENTPACK_HOME` → a persisted `--set-home` choice → the default `~/.agentpack`. Relocating the home does not move existing state; copy the old directory over to keep installs and cache.
 
 ### `agentpack doctor`
 

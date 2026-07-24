@@ -12,7 +12,7 @@ public class DocumentationTests
             "agentpack list", "agentpack search", "agentpack groups", "agentpack install", "agentpack submit",
             "agentpack remove", "agentpack update",
             "agentpack outdated", "agentpack status", "agentpack diff", "agentpack pin", "agentpack unpin",
-            "agentpack doctor", "agentpack catalog use", "agentpack catalog status", "agentpack catalog sync",
+            "agentpack config", "agentpack doctor", "agentpack catalog use", "agentpack catalog status", "agentpack catalog sync",
             "agentpack catalog validate", "agentpack catalog lock",
             "agentpack catalog verify-external", "agentpack profile list", "agentpack profile plan",
             "agentpack profile apply"

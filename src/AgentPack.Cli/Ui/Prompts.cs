@@ -3,6 +3,13 @@ using Spectre.Console;
 
 namespace AgentPack.Cli.Ui;
 
+/// <summary>Whether an asset offered in the picker is already installed for the active scope.</summary>
+public enum AssetInstallMarker
+{
+    Installed,
+    UpdateAvailable
+}
+
 public static class Prompts
 {
     /// <summary>
@@ -10,8 +17,14 @@ public static class Prompts
     /// (everything preselected). Catalogs that fit on one page get a single grouped
     /// checklist; larger ones get a category browser so nobody scrolls through
     /// hundreds of rows: pick a kind, tick assets, repeat, then Done.
+    /// <paramref name="installed"/> annotates rows already present in the target scope so
+    /// the picker shows what will be installed fresh versus updated in place.
     /// </summary>
-    public static IReadOnlyList<Asset> SelectAssets(IReadOnlyList<Asset> assets, string title, bool preselectAll)
+    public static IReadOnlyList<Asset> SelectAssets(
+        IReadOnlyList<Asset> assets,
+        string title,
+        bool preselectAll,
+        IReadOnlyDictionary<string, AssetInstallMarker>? installed = null)
     {
         var pageSize = PageSize();
         var kinds = assets.Select(x => x.Kind).Distinct().Count();
@@ -20,14 +33,14 @@ public static class Prompts
         if (assets.Count + kinds <= pageSize || kinds == 1)
         {
             var preselected = preselectAll ? assets.Select(x => x.Id) : [];
-            return Checklist(assets, $"{title} — {assets.Count} available", preselected.ToHashSet(StringComparer.OrdinalIgnoreCase), pageSize);
+            return Checklist(assets, $"{title} — {assets.Count} available", preselected.ToHashSet(StringComparer.OrdinalIgnoreCase), pageSize, installed);
         }
 
-        return BrowseByKind(assets, title, preselectAll, pageSize);
+        return BrowseByKind(assets, title, preselectAll, pageSize, installed);
     }
 
     /// <summary>Category loop with a cart: kinds carry counts, selections survive switching kinds.</summary>
-    private static IReadOnlyList<Asset> BrowseByKind(IReadOnlyList<Asset> assets, string title, bool preselectAll, int pageSize)
+    private static IReadOnlyList<Asset> BrowseByKind(IReadOnlyList<Asset> assets, string title, bool preselectAll, int pageSize, IReadOnlyDictionary<string, AssetInstallMarker>? installed)
     {
         var cart = new Dictionary<string, Asset>(StringComparer.OrdinalIgnoreCase);
         if (preselectAll)
@@ -58,7 +71,7 @@ public static class Prompts
             if (choice.Cancel) return [];
             if (choice.Search)
             {
-                SearchAssets(assets, cart, pageSize);
+                SearchAssets(assets, cart, pageSize, installed);
                 continue;
             }
 
@@ -68,7 +81,8 @@ public static class Prompts
                 subset,
                 $"{title}: {scope} — {subset.Count} available",
                 subset.Where(x => cart.ContainsKey(x.Id)).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase),
-                pageSize);
+                pageSize,
+                installed);
 
             // The checklist result is authoritative for what it showed: unticked means removed.
             foreach (var asset in subset) cart.Remove(asset.Id);
@@ -82,7 +96,7 @@ public static class Prompts
     /// Type-to-find across every asset regardless of kind; picking one toggles it
     /// in the cart. Loops so several assets can be found in a row.
     /// </summary>
-    private static void SearchAssets(IReadOnlyList<Asset> assets, Dictionary<string, Asset> cart, int pageSize)
+    private static void SearchAssets(IReadOnlyList<Asset> assets, Dictionary<string, Asset> cart, int pageSize, IReadOnlyDictionary<string, AssetInstallMarker>? installed)
     {
         while (true)
         {
@@ -94,7 +108,7 @@ public static class Prompts
             prompt.AddChoices(assets
                 .OrderBy(x => x.Kind).ThenBy(x => x.Id, StringComparer.Ordinal)
                 .Select(asset => new AssetChoice(
-                    $"{(cart.ContainsKey(asset.Id) ? "[green]✓[/] " : "  ")}{Label(asset)} [grey]· {asset.Kind.Display()}[/]",
+                    $"{(cart.ContainsKey(asset.Id) ? "[green]✓[/] " : "  ")}{Label(asset, installed)} [grey]· {asset.Kind.Display()}[/]",
                     asset))
                 .Prepend(new AssetChoice("[grey]back to categories[/]", null)));
 
@@ -113,7 +127,7 @@ public static class Prompts
         }
     }
 
-    private static IReadOnlyList<Asset> Checklist(IReadOnlyList<Asset> assets, string title, HashSet<string> preselectedIds, int pageSize)
+    private static IReadOnlyList<Asset> Checklist(IReadOnlyList<Asset> assets, string title, HashSet<string> preselectedIds, int pageSize, IReadOnlyDictionary<string, AssetInstallMarker>? installed)
     {
         var prompt = new MultiSelectionPrompt<AssetChoice>()
             .Title($"[bold]{Markup.Escape(title)}[/]")
@@ -127,7 +141,7 @@ public static class Prompts
             var header = new AssetChoice($"[bold]{kindGroup.Key.Display()}[/]", null);
             var children = kindGroup
                 .OrderBy(x => x.Id, StringComparer.Ordinal)
-                .Select(asset => new AssetChoice(Label(asset), asset))
+                .Select(asset => new AssetChoice(Label(asset, installed), asset))
                 .ToList();
             prompt.AddChoiceGroup(header, children);
             foreach (var child in children.Where(x => preselectedIds.Contains(x.Asset!.Id)))
@@ -266,7 +280,7 @@ public static class Prompts
         return result;
     }
 
-    private static string Label(Asset asset)
+    private static string Label(Asset asset, IReadOnlyDictionary<string, AssetInstallMarker>? installed)
     {
         // Fit the description to the terminal: id + version + prompt chrome eat ~30 columns.
         var room = Math.Clamp(AnsiConsole.Profile.Width - asset.Id.Length - 30, 24, 100);
@@ -277,7 +291,14 @@ public static class Prompts
             AssetStatus.Deprecated => " [yellow](deprecated)[/]",
             _ => ""
         };
-        return $"{Markup.Escape(asset.Id)} [grey]{asset.Version}[/]  {Markup.Escape(description)}{badge}";
+        var marker = installed is not null && installed.TryGetValue(asset.Id, out var state)
+            ? state switch
+            {
+                AssetInstallMarker.UpdateAvailable => " [blue](update available)[/]",
+                _ => " [green](installed)[/]"
+            }
+            : "";
+        return $"{Markup.Escape(asset.Id)} [grey]{asset.Version}[/]  {Markup.Escape(description)}{marker}{badge}";
     }
 
     private sealed record AssetChoice(string Label, Asset? Asset);

@@ -36,7 +36,7 @@ public static class Prompts
         if (assets.Count + kinds <= pageSize || kinds == 1)
         {
             var preselected = preselectAll ? assets.Select(x => x.Id) : [];
-            return Checklist(assets, $"{title} — {assets.Count} available", preselected.ToHashSet(StringComparer.OrdinalIgnoreCase), pageSize, installed);
+            return Checklist(assets, $"{title} — {assets.Count} available", preselected.ToHashSet(StringComparer.OrdinalIgnoreCase), pageSize, installed, returnsToMenu: false).Picked;
         }
 
         return BrowseByKind(assets, title, preselectAll, pageSize, installed);
@@ -54,11 +54,11 @@ public static class Prompts
         var kinds = assets.GroupBy(x => x.Kind).OrderBy(x => x.Key).ToList();
         while (true)
         {
-            var done = new KindChoice($"[green]Done[/] — {(cart.Count == 0 ? "nothing selected" : $"{cart.Count} selected")}", Done: true);
+            var done = new KindChoice($"[green]Done[/] [grey]— review the plan and install[/] {(cart.Count == 0 ? "[grey](nothing selected)[/]" : $"[grey]({cart.Count} selected)[/]")}", Done: true);
             var everything = new KindChoice(KindLabel("everything", assets, cart), Kind: null);
             var search = new KindChoice("find one asset [grey](type its name)[/]", Search: true);
             var prompt = new SelectionPrompt<KindChoice>()
-                .Title($"[bold]{Markup.Escape(title)}[/] [grey]({assets.Count} assets — pick a category, tick assets, repeat; type to search)[/]")
+                .Title($"[bold]{Markup.Escape(title)}[/] [grey]({assets.Count} assets — pick a category, tick assets, enter returns here; type to search)[/]")
                 .PageSize(Math.Max(pageSize, kinds.Count + 4))
                 .HighlightStyle(Highlight)
                 .WrapAround()
@@ -69,7 +69,7 @@ public static class Prompts
                 .Prepend(search)
                 .Prepend(everything)
                 .Prepend(done)
-                .Append(new KindChoice("[grey]Cancel[/]", Cancel: true)));
+                .Append(new KindChoice("[red]Cancel[/] [grey]— quit without installing[/]", Cancel: true)));
 
             var choice = AnsiConsole.Prompt(prompt);
             if (choice.Done) break;
@@ -82,16 +82,20 @@ public static class Prompts
 
             var subset = choice.Kind is { } kind ? kinds.First(g => g.Key == kind).ToList() : assets.ToList();
             var scope = choice.Kind is { } k ? k.Display() : "everything";
-            var picked = Checklist(
+            var result = Checklist(
                 subset,
                 $"{title}: {scope} — {subset.Count} available",
                 subset.Where(x => cart.ContainsKey(x.Id)).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase),
                 pageSize,
-                installed);
+                installed,
+                returnsToMenu: true);
+
+            // Marking Cancel inside a category aborts the whole picker, matching the menu's Cancel.
+            if (result.Outcome == PickOutcome.Cancelled) return [];
 
             // The checklist result is authoritative for what it showed: unticked means removed.
             foreach (var asset in subset) cart.Remove(asset.Id);
-            foreach (var asset in picked) cart[asset.Id] = asset;
+            foreach (var asset in result.Picked) cart[asset.Id] = asset;
         }
 
         return cart.Values.OrderBy(x => x.Kind).ThenBy(x => x.Id, StringComparer.Ordinal).ToList();
@@ -135,17 +139,35 @@ public static class Prompts
         }
     }
 
-    private static IReadOnlyList<Asset> Checklist(IReadOnlyList<Asset> assets, string title, HashSet<string> preselectedIds, int pageSize, IReadOnlyDictionary<string, AssetInstallMarker>? installed)
+    /// <summary>
+    /// Grouped checkbox list. <paramref name="returnsToMenu"/> is true when this runs inside the
+    /// category browser: there, Enter banks the ticks and drops back to the category menu rather
+    /// than finishing the install, so the instructions and the Cancel row say so. A ticked Cancel
+    /// row is Spectre's stand-in for an Escape key (the library binds no Escape) — it aborts the
+    /// whole picker, so no one gets trapped in a checklist with no way out.
+    /// </summary>
+    private static ChecklistResult Checklist(IReadOnlyList<Asset> assets, string title, HashSet<string> preselectedIds, int pageSize, IReadOnlyDictionary<string, AssetInstallMarker>? installed, bool returnsToMenu)
     {
         var nameWidth = Math.Clamp(assets.Max(x => x.Id.Length), 1, 28);
+        var instructions = returnsToMenu
+            ? "[grey](space toggles · enter banks these and returns to the menu · mark Cancel to quit — nothing is installed yet)[/]"
+            : "[grey](space toggles · enter confirms your selection · mark Cancel, or tick nothing, to quit)[/]";
         var prompt = new MultiSelectionPrompt<AssetChoice>()
             .Title($"[bold]{Markup.Escape(title)}[/]")
             .PageSize(pageSize)
             .NotRequired()
             .HighlightStyle(Highlight)
             .WrapAround()
-            .InstructionsText("[grey](space toggles, enter confirms, arrows move — a kind row toggles its whole group)[/]")
+            .InstructionsText(instructions)
             .UseConverter(choice => choice.Label);
+
+        var cancel = new AssetChoice(
+            returnsToMenu
+                ? "[red]✗ Cancel[/] [grey]— quit the installer (space to mark, then enter)[/]"
+                : "[red]✗ Cancel[/] [grey]— quit without installing (space to mark, then enter)[/]",
+            null,
+            Cancel: true);
+        prompt.AddChoices(cancel);
 
         foreach (var kindGroup in assets.GroupBy(x => x.Kind).OrderBy(x => x.Key))
         {
@@ -161,7 +183,9 @@ public static class Prompts
             }
         }
 
-        return AnsiConsole.Prompt(prompt).Where(x => x.Asset is not null).Select(x => x.Asset!).ToList();
+        var selected = AnsiConsole.Prompt(prompt);
+        if (selected.Any(x => x.Cancel)) return ChecklistResult.Cancelled;
+        return ChecklistResult.Confirm(selected.Where(x => x.Asset is not null).Select(x => x.Asset!).ToList());
     }
 
     private static string KindLabel(string name, IReadOnlyList<Asset> subset, Dictionary<string, Asset> cart)
@@ -316,7 +340,17 @@ public static class Prompts
         return $"{Markup.Escape(name)} [grey]{version}[/]  {Markup.Escape(description)}{marker}";
     }
 
-    private sealed record AssetChoice(string Label, Asset? Asset);
+    private sealed record AssetChoice(string Label, Asset? Asset, bool Cancel = false);
 
     private sealed record KindChoice(string Label, AssetKind? Kind = null, bool Done = false, bool Cancel = false, bool Search = false);
+
+    private enum PickOutcome { Confirmed, Cancelled }
+
+    /// <summary>What a checklist returned: either the ticked assets, or a request to abort the picker.</summary>
+    private readonly record struct ChecklistResult(PickOutcome Outcome, IReadOnlyList<Asset> Picked)
+    {
+        public static ChecklistResult Cancelled { get; } = new(PickOutcome.Cancelled, []);
+
+        public static ChecklistResult Confirm(IReadOnlyList<Asset> picked) => new(PickOutcome.Confirmed, picked);
+    }
 }

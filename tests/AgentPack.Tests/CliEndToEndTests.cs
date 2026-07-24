@@ -638,7 +638,7 @@ public class CliEndToEndTests
 
         var result = RunCli(temp, "install", "--claude", "--project");
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("agentpack install grill-me", result.Output + result.Error);
+        Assert.Contains("agentpack install code-review", result.Output + result.Error);
     }
 
     [Fact]
@@ -686,6 +686,21 @@ public class CliEndToEndTests
         Assert.Equal(0, withStatus.ExitCode);
         Assert.Contains("Status", withStatus.Output);
         Assert.Contains("deprecated", withStatus.Output);
+    }
+
+    [Fact]
+    public void ConfigShowsHomeAndProviderPaths()
+    {
+        using var temp = new TempDir();
+        WriteCatalog(temp);
+
+        var result = RunCli(temp, "config");
+
+        Assert.Equal(0, result.ExitCode);
+        // Long paths wrap at the default width, so assert on short unbroken tokens.
+        Assert.Contains("home", result.Output);
+        Assert.Contains("provider", result.Output);
+        Assert.Contains("AGENTPACK_HOME", result.Output);
     }
 
     [Fact]

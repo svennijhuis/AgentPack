@@ -52,7 +52,7 @@ public class InstallCommand : Command<InstallCommand.Settings>
         {
             throw new AgentPackException(
                 "No assets specified and no interactive terminal to pick from.",
-                "Pass asset ids ('agentpack install grill-me'), a kind ('agentpack install skills'), or --group <name>.");
+                "Pass asset ids ('agentpack install code-review'), a kind ('agentpack install skills'), or --group <name>.");
         }
 
         var assets = CommandHelpers.EnforceStatus(
@@ -70,7 +70,8 @@ public class InstallCommand : Command<InstallCommand.Settings>
             var pickerTitle = settings.Targets.Length > 0 || settings.Groups.Length > 0
                 ? "Select assets to install (filtered)"
                 : "Select assets to install";
-            assets = Prompts.SelectAssets(assets, pickerTitle, preselectAll: false).ToList();
+            var installed = InstalledMarkers(JsonStore.Load<AgentPackLock>(session.Paths.GetLockPath(scope)), assets);
+            assets = Prompts.SelectAssets(assets, pickerTitle, preselectAll: false, installed).ToList();
             if (assets.Count == 0)
             {
                 Output.Info("Nothing selected.");
@@ -81,6 +82,28 @@ public class InstallCommand : Command<InstallCommand.Settings>
         var plan = new Installer(session.Paths).Plan(loaded, assets, providers, scope);
         var title = apply ? Title : "Install plan (dry run)";
         return CommandHelpers.RenderAndApply(session, loaded, plan, scope, settings, title, apply);
+    }
+
+    /// <summary>
+    /// Marks which offered assets already exist in the scope's lockfile, and whether the
+    /// catalog carries a newer version, so the picker can label rows install vs update.
+    /// </summary>
+    private static Dictionary<string, AssetInstallMarker> InstalledMarkers(AgentPackLock lockFile, IEnumerable<Asset> assets)
+    {
+        var entriesById = lockFile.Entries
+            .GroupBy(x => x.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var markers = new Dictionary<string, AssetInstallMarker>(StringComparer.OrdinalIgnoreCase);
+        foreach (var asset in assets)
+        {
+            if (!entriesById.TryGetValue(asset.Id, out var entries)) continue;
+            markers[asset.Id] = entries.Any(entry => asset.Version.IsNewerThan(entry.Version))
+                ? AssetInstallMarker.UpdateAvailable
+                : AssetInstallMarker.Installed;
+        }
+
+        return markers;
     }
 }
 

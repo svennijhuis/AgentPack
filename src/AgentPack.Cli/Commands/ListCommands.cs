@@ -20,6 +20,10 @@ public sealed class ListCommand : Command<ListCommand.Settings>
         [CommandOption("-p|--provider <PROVIDER>")]
         [Description("Filter by provider.")]
         public string[] Providers { get; set; } = [];
+
+        [CommandOption("-w|--wide")]
+        [Description("Show extra columns: description, groups, and providers.")]
+        public bool Wide { get; set; }
     }
 
     public override int Execute(CommandContext context, Settings settings)
@@ -47,36 +51,54 @@ public sealed class ListCommand : Command<ListCommand.Settings>
             filtered
                 ? "No assets match these filters. Run 'agentpack list' without filters to see everything."
                 : "The catalog is empty. Propose an asset with 'agentpack submit <kind> <path-or-url-or-id>'.",
-            "agentpack list <kind>");
+            settings.Wide,
+            // The whole-catalog view is where a "which kinds exist?" breakdown helps most.
+            showKindBreakdown: !filtered);
         return 0;
     }
 
-    internal static void RenderAssets(IReadOnlyList<Asset> assets, string emptyMessage, string narrowCommand)
+    /// <summary>
+    /// Compact by default — id, kind, version, and only the status/source columns that
+    /// actually carry a non-default value. Descriptions, groups, and providers hide behind
+    /// <c>--wide</c> so the common view stays scannable and never wraps into a wall of text.
+    /// </summary>
+    internal static void RenderAssets(IReadOnlyList<Asset> assets, string emptyMessage, bool wide = false, bool showKindBreakdown = false)
     {
-        // The common case is all-recommended, all-local: those columns then say nothing — drop them.
-        var showStatus = assets.Any(x => x.Status != AssetStatus.Recommended);
-        var showSource = assets.Any(x => x.Source is AssetSource.External);
-        var compact = Spectre.Console.AnsiConsole.Profile.Width < 100;
-        var descriptionRoom = Math.Clamp(Spectre.Console.AnsiConsole.Profile.Width - (compact ? 45 : 60), 24, 120);
+        var width = Spectre.Console.AnsiConsole.Profile.Width;
 
-        var headers = new List<string> { "ID", "Kind", "Version" };
-        if (!compact) headers.AddRange(["Groups", "Providers"]);
+        // Only carry columns that say something. Kind is noise once every row shares it
+        // (a filtered `list <kind>`); status/source only appear when a value is non-default.
+        // Source is a detail: on a narrow terminal it costs a column that makes ids wrap,
+        // so it waits for a wide terminal or --wide.
+        var showKind = assets.Select(x => x.Kind).Distinct().Count() > 1;
+        var showStatus = assets.Any(x => x.Status != AssetStatus.Recommended);
+        var showSource = assets.Any(x => x.Source is AssetSource.External) && (wide || width >= 100);
+        var descriptionRoom = Math.Clamp(width - 55, 24, 120);
+
+        var headers = new List<string> { "ID" };
+        if (showKind) headers.Add("Kind");
+        headers.Add("Version");
+        if (wide) headers.AddRange(["Groups", "Providers"]);
         var statusColumn = showStatus ? headers.Count : -1;
         if (showStatus) headers.Add("Status");
+        var sourceColumn = showSource ? headers.Count : -1;
         if (showSource) headers.Add("Source");
-        headers.Add("Description");
+        if (wide) headers.Add("Description");
+
+        // Every column except the wrap-friendly Description stays on one line so a long
+        // value truncates instead of exploding a row into many terminal lines.
+        var noWrap = new List<int> { 0 };
+        if (showStatus) noWrap.Add(statusColumn);
+        if (showSource) noWrap.Add(sourceColumn);
 
         Output.Table(
             headers.ToArray(),
             assets.Select(asset =>
             {
-                var row = new List<string>
-                {
-                    asset.Id,
-                    asset.Kind.Display(),
-                    asset.Version.ToString()
-                };
-                if (!compact)
+                var row = new List<string> { asset.Id };
+                if (showKind) row.Add(asset.Kind.Display());
+                row.Add(asset.Version.ToString());
+                if (wide)
                 {
                     row.Add(string.Join(",", asset.Groups));
                     row.Add(asset.Providers.Count == ProviderNames.All.Count ? "all" : string.Join(",", asset.Providers.Select(ProviderNames.Display)));
@@ -94,19 +116,37 @@ public sealed class ListCommand : Command<ListCommand.Settings>
                 if (showSource)
                 {
                     row.Add(asset.Source is AssetSource.External external
-                        ? $"external ({ExternalSourceParser.RepositoryLabel(external)})"
+                        ? Output.Fit(ExternalSourceParser.RepositoryLabel(external), 24)
                         : "local");
                 }
-                row.Add(Output.Fit(asset.Description, descriptionRoom));
+                if (wide) row.Add(Output.Fit(asset.Description, descriptionRoom));
                 return row.ToArray();
             }),
             emptyMessage: emptyMessage,
             markupColumns: showStatus ? [statusColumn] : null,
-            noWrapColumns: showStatus ? [0, 1, 2, statusColumn] : [0, 1, 2]);
+            noWrapColumns: noWrap.ToArray());
 
-        if (assets.Count >= 10)
+        RenderFooter(assets, wide, showKindBreakdown);
+    }
+
+    /// <summary>Turns the table into a launch pad: which kinds exist, and how to install what you see.</summary>
+    private static void RenderFooter(IReadOnlyList<Asset> assets, bool wide, bool showKindBreakdown)
+    {
+        if (assets.Count == 0) return;
+
+        if (showKindBreakdown && assets.Select(x => x.Kind).Distinct().Count() > 1)
         {
-            Output.Info($"{assets.Count} assets — narrow with '{narrowCommand}', --group <name>, or --provider <name>.");
+            var breakdown = assets
+                .GroupBy(x => x.Kind)
+                .OrderBy(g => g.Key)
+                .Select(g => $"{g.Key.Display()} ({g.Count()})");
+            Output.Info($"Kinds: {string.Join(" · ", breakdown)} — filter with 'agentpack list <kind>', e.g. 'agentpack list skills'.");
+        }
+
+        Output.Info("Install: run 'agentpack install' to pick assets — installs new ones, updates any with a newer version.");
+        if (!wide)
+        {
+            Output.Info("Add '--wide' (or '-w') for descriptions, groups, and providers.");
         }
     }
 }
@@ -130,6 +170,10 @@ public sealed class SearchCommand : Command<SearchCommand.Settings>
         [CommandOption("-p|--provider <PROVIDER>")]
         [Description("Filter by provider (repeatable or comma-separated).")]
         public string[] Providers { get; set; } = [];
+
+        [CommandOption("-w|--wide")]
+        [Description("Show extra columns: description, groups, and providers.")]
+        public bool Wide { get; set; }
     }
 
     public override int Execute(CommandContext context, Settings settings)
@@ -162,7 +206,7 @@ public sealed class SearchCommand : Command<SearchCommand.Settings>
         ListCommand.RenderAssets(
             assets,
             $"No approved assets match '{settings.Query}'. Run 'agentpack list' to browse the catalog.",
-            "agentpack search <query>");
+            settings.Wide);
         return ExitCodes.Ok;
     }
 

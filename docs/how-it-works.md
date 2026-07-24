@@ -149,7 +149,7 @@ One asset, four native formats. Merges add entries; they never rewrite or delete
 flowchart TD
     HOOK["hook asset<br/>assets/hooks/secret-scan/"]
     MCP["mcp asset<br/>assets/mcp/github/"]
-    SKILL["skill asset<br/>assets/skills/grill-me/"]
+    SKILL["skill asset<br/>assets/skills/code-review/"]
 
     HOOK --> H1["Claude: .claude/settings.json<br/>hooks.PreToolUse + matcher"]
     HOOK --> H2["Codex: .codex/hooks.json<br/>same structure as Claude"]
@@ -161,10 +161,10 @@ flowchart TD
     MCP --> M3["Copilot: .vscode/mcp.json servers key<br/>env: dollar-brace env:VAR"]
     MCP --> M4["Cursor: .cursor/mcp.json<br/>env: dollar-brace env:VAR"]
 
-    SKILL --> S1["Claude: .claude/skills/grill-me/"]
-    SKILL --> S2["Codex: .agents/skills/grill-me/"]
-    SKILL --> S3["Copilot: .github/skills/grill-me/"]
-    SKILL --> S4["Cursor: .cursor/skills/grill-me/"]
+    SKILL --> S1["Claude: .claude/skills/code-review/"]
+    SKILL --> S2["Codex: .agents/skills/code-review/"]
+    SKILL --> S3["Copilot: .github/skills/code-review/"]
+    SKILL --> S4["Cursor: .cursor/skills/code-review/"]
 ```
 
 Full path matrix with doc links: [provider-mapping.md](provider-mapping.md).

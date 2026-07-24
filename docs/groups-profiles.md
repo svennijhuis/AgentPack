@@ -36,7 +36,7 @@ profiles:
     name: Backend Team
     providers: [codex, claude]   # optional; omitted = detect from the repo
     groups: [backend]            # include every asset labeled backend...
-    assets: [grill-me]           # ...plus these specific ones
+    assets: [code-review]           # ...plus these specific ones
 ```
 
 ```bash

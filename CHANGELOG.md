@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`agentpack config`.** Shows every path AgentPack uses — home, config file,
+  catalog cache, user lockfile, and provider home — and where each is resolved from.
+  `--set-home <path>` persists a new state directory; `--reset-home` reverts to the
+  default. Home precedence is `AGENTPACK_HOME` → persisted choice → `~/.agentpack`.
+  Provider files (`.claude/`, `.codex/`, …) are never relocated.
+- **Install/update picker shows install state.** Rows already present are marked, and
+  ones with a newer catalog version show `(update available)`, so the picker makes it
+  clear whether Enter will install or update.
+- **`agentpack list --wide` / `search --wide`.** Opt in to the description, groups,
+  and providers columns.
+
+### Changed
+
+- **Compact `list` output.** The default view drops the description column (it wrapped
+  into a wall of text) and shows only the columns that carry a non-default value: the
+  kind column collapses when every row shares it, and source waits for a wide terminal
+  or `--wide`. A footer lists the kinds present and how to install what you see.
+- Documentation reorganized around a complete command reference; examples no longer use
+  `grill-me`.
+
 ## 0.3.0 — 2026-07-23
 
 Catalog-first workflow and safety cleanup.

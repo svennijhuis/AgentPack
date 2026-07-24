@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 — 2026-07-24
+
+### Changed
+
+- **Clearer interactive picker completion and cancellation.** Category checklists now
+  explain that Enter saves their selections and returns to the category menu, while
+  explicit Cancel rows abort the whole picker without installing anything.
+
 ## 0.3.2 — 2026-07-24
 
 ### Changed
